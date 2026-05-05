@@ -1,0 +1,6 @@
+{
+  "name": "QR Smart Menu",
+  "description": "A QR-based restaurant ordering system with real-time order tracking for customers and owners.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

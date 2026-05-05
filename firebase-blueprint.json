@@ -1,0 +1,81 @@
+{
+  "entities": {
+    "restaurant": {
+      "title": "Restaurant",
+      "description": "Details about the restaurant",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "description": { "type": "string" },
+        "staffEmails": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "ownerId"]
+    },
+    "menuItem": {
+      "title": "Menu Item",
+      "description": "Food or drink item in the menu",
+      "type": "object",
+      "properties": {
+        "restaurantId": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "price": { "type": "number" },
+        "category": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "isAvailable": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["restaurantId", "name", "price"]
+    },
+    "order": {
+      "title": "Order",
+      "description": "Customer order",
+      "type": "object",
+      "properties": {
+        "restaurantId": { "type": "string" },
+        "tableNo": { "type": "string" },
+        "customerName": { "type": "string" },
+        "items": { "type": "array" },
+        "totalAmount": { "type": "number" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["restaurantId", "tableNo", "items", "totalAmount"]
+    },
+    "qrTable": {
+      "title": "QR Table",
+      "description": "Manual QR configuration for a table",
+      "type": "object",
+      "properties": {
+        "restaurantId": { "type": "string" },
+        "name": { "type": "string" },
+        "tableNo": { "type": "string" },
+        "dynamicLink": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["restaurantId", "name", "tableNo"]
+    }
+  },
+  "firestore": {
+    "/restaurants/{restaurantId}": {
+      "schema": "restaurant",
+      "description": "Business settings"
+    },
+    "/menuItems/{menuItemId}": {
+      "schema": "menuItem",
+      "description": "Menu catalog"
+    },
+    "/orders/{orderId}": {
+      "schema": "order",
+      "description": "Customer transactions"
+    },
+    "/qrTables/{qrTableId}": {
+      "schema": "qrTable",
+      "description": "Custom QR links"
+    }
+  }
+}

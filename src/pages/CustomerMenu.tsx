@@ -26,7 +26,8 @@ import {
   ChefHat,
   X,
   ArrowRight,
-  BellRing
+  BellRing,
+  Check
 } from 'lucide-react';
 import { cn, formatCurrency, handleFirestoreError, OperationType } from '../lib/utils';
 import { MenuItem, Restaurant, OrderItem, Order } from '../types';
@@ -111,9 +112,7 @@ export default function CustomerMenu() {
     const q = query(collection(db, qPath), where('restaurantId', '==', restaurantId), where('isAvailable', '==', true));
     const unsub = onSnapshot(q, (mSnapshot) => {
       const items = mSnapshot.docs.map(iDoc => ({ id: iDoc.id, ...iDoc.data() } as MenuItem));
-      // Filter out items that are out of stock
-      // Set to state
-      setMenuItems(items.filter(i => i.stockCount > 0));
+      setMenuItems(items);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, qPath);
     });
@@ -135,12 +134,39 @@ export default function CustomerMenu() {
     return unsub;
   }, [orderSent?.id]);
 
-  const categories = useMemo(() => {
-    const cats = Array.from(new Set(menuItems.map(i => i.category)));
-    return ['All', ...cats];
-  }, [menuItems]);
+  const availableMenuItems = useMemo(() => {
+    return menuItems.filter(i => {
+      if (i.category === 'Inventory Product') return false;
+      
+      const isMismatch = i.businessType && restaurant?.businessType && i.businessType !== restaurant.businessType;
+      
+      let isOldMismatch = false;
+      if (!i.businessType && restaurant?.businessType) {
+        const cat = i.category as string;
+        if (restaurant.businessType === 'Salon') {
+          isOldMismatch = !['Hair', 'Face', 'Spa & Massage', 'Other Services'].includes(cat);
+        } else if (restaurant.businessType === 'Clinic') {
+          isOldMismatch = !['Consultation', 'Diagnostics', 'Treatment', 'Other Services'].includes(cat);
+        } else {
+          isOldMismatch = !['Main Course', 'Snacks', 'Drinks', 'Desserts'].includes(cat);
+        }
+      }
 
-  const filteredItems = menuItems.filter(i => 
+      if (isMismatch || isOldMismatch) return false;
+
+      if (restaurant?.businessType === 'Salon' || restaurant?.businessType === 'Clinic') {
+        return (i.stockCount !== null && i.stockCount !== undefined && i.stockCount !== 0) ? i.stockCount > 0 : true;
+      }
+      return i.stockCount > 0;
+    });
+  }, [menuItems, restaurant?.businessType]);
+
+  const categories = useMemo(() => {
+    const cats = Array.from(new Set(availableMenuItems.map(i => i.category)));
+    return ['All', ...cats];
+  }, [availableMenuItems]);
+
+  const filteredItems = availableMenuItems.filter(i => 
     (activeCategory === 'All' || i.category === activeCategory) &&
     (i.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     (i.description && i.description.toLowerCase().includes(searchTerm.toLowerCase())))
@@ -155,11 +181,11 @@ export default function CustomerMenu() {
         });
       }
     });
-    return menuItems
+    return availableMenuItems
       .filter(item => counts[item.id])
       .sort((a, b) => counts[b.id] - counts[a.id])
       .slice(0, 3);
-  }, [pastOrders, menuItems]);
+  }, [pastOrders, availableMenuItems]);
 
   const suggestedItems = useMemo(() => {
     if (cart.length === 0) return [];
@@ -179,11 +205,11 @@ export default function CustomerMenu() {
       }
     });
     
-    return menuItems
+    return availableMenuItems
       .filter(item => suggestions[item.id])
       .sort((a,b) => suggestions[b.id] - suggestions[a.id])
       .slice(0, 3);
-  }, [pastOrders, menuItems, cart]);
+  }, [pastOrders, availableMenuItems, cart]);
 
   const totalAmount = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
@@ -192,7 +218,10 @@ export default function CustomerMenu() {
     setCart(prev => {
       const existing = prev.find(i => i.id === item.id);
       if (existing) {
-        const newQty = existing.quantity + delta;
+        let newQty = existing.quantity + delta;
+        if (restaurant?.businessType === 'Salon' || restaurant?.businessType === 'Clinic') {
+          if (newQty > 1) newQty = 1;
+        }
         if (newQty <= 0) return prev.filter(i => i.id !== item.id);
         return prev.map(i => i.id === item.id ? { ...i, quantity: newQty } : i);
       }
@@ -218,20 +247,29 @@ export default function CustomerMenu() {
       };
       const docRef = await addDoc(collection(db, qPath), orderData);
       
-      // Update stock for all items in the cart
-      await Promise.all(cart.map(item => 
-        updateDoc(doc(db, 'menuItems', item.id), {
-          stockCount: increment(-item.quantity)
-        }).catch(err => {
-          // Log error but don't fail the order if stock update fails just in case
-          console.error("Failed to update stock for item", item.id, err);
-        })
-      ));
+      // Update stock for all items in the cart (if stock is being tracked)
+      await Promise.all(cart.map(async item => {
+        const menuItemDoc = await getDoc(doc(db, 'menuItems', item.id));
+        if (menuItemDoc.exists()) {
+          const currentStock = menuItemDoc.data().stockCount;
+          // If we are tracking stock (not null/undefined/0 for salons), decrement it
+          if (currentStock !== null && currentStock !== undefined) {
+             if ((restaurant?.businessType === 'Salon' || restaurant?.businessType === 'Clinic') && currentStock === 0) {
+               return; // Ignore default 0 stock for salons
+             }
+             await updateDoc(doc(db, 'menuItems', item.id), {
+               stockCount: increment(-item.quantity)
+             }).catch(err => {
+               console.error("Failed to update stock", err);
+             });
+          }
+        }
+      }));
       
       const key = `activeOrder_${restaurantId}`;
       localStorage.setItem(key, JSON.stringify({
         orderId: docRef.id,
-        expiresAt: Date.now() + 2 * 60 * 60 * 1000 // 2 hours
+        expiresAt: Date.now() + 60 * 60 * 1000 // 1 hour
       }));
 
       setOrderSent({ id: docRef.id, ...orderData } as any);
@@ -253,7 +291,7 @@ export default function CustomerMenu() {
   if (!restaurant) return <div>Restaurant not found</div>;
 
   if (orderSent) {
-    return <OrderStatusView order={orderSent} restaurantName={restaurant.name} googleMapReviewLink={qrTableInfo?.googleMapReviewLink} />;
+    return <OrderStatusView order={orderSent} restaurantName={restaurant.name} googleMapReviewLink={qrTableInfo?.googleMapReviewLink} businessType={restaurant.businessType} />;
   }
 
   return (
@@ -263,7 +301,7 @@ export default function CustomerMenu() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-neutral-900">{restaurant.name}</h1>
-            <p className="text-xs font-semibold text-orange-600">TABLE {tableNo}</p>
+            <p className="text-xs font-semibold text-orange-600">{(restaurant?.businessType === 'Salon' || restaurant?.businessType === 'Clinic') ? 'STAFF CODE' : 'TABLE'} {tableNo}</p>
           </div>
           <div className="rounded-full bg-neutral-100 p-2">
             <Utensils className="h-5 w-5 text-neutral-400" />
@@ -305,7 +343,7 @@ export default function CustomerMenu() {
             <h2 className="mb-4 text-xl font-black text-neutral-900 flex items-center gap-2">🔥 Popular / Trending</h2>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {popularItems.map(item => (
-                <MenuItemCard key={item.id} item={item} cart={cart} updateCart={updateCart} />
+                <MenuItemCard key={item.id} item={item} cart={cart} updateCart={updateCart} businessType={restaurant?.businessType} />
               ))}
             </div>
           </div>
@@ -317,7 +355,7 @@ export default function CustomerMenu() {
            )}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {filteredItems.map(item => (
-              <MenuItemCard key={item.id} item={item} cart={cart} updateCart={updateCart} />
+              <MenuItemCard key={item.id} item={item} cart={cart} updateCart={updateCart} businessType={restaurant?.businessType} />
             ))}
           </div>
         </div>
@@ -381,7 +419,9 @@ export default function CustomerMenu() {
                   <div key={item.id} className="flex items-center justify-between">
                     <div>
                       <span className="font-bold text-neutral-900">{item.name}</span>
-                      <span className="ml-2 text-xs font-bold text-orange-600">x{item.quantity}</span>
+                      {(!restaurant || (restaurant.businessType !== 'Salon' && restaurant.businessType !== 'Clinic')) && (
+                        <span className="ml-2 text-xs font-bold text-orange-600">x{item.quantity}</span>
+                      )}
                     </div>
                     <span className="font-bold text-neutral-900">{formatCurrency(item.price * item.quantity)}</span>
                   </div>
@@ -395,7 +435,7 @@ export default function CustomerMenu() {
                   </h4>
                   <div className="grid grid-cols-1 gap-3">
                     {suggestedItems.map(item => (
-                       <MenuItemCard key={item.id} item={item} cart={cart} updateCart={updateCart} />
+                       <MenuItemCard key={item.id} item={item} cart={cart} updateCart={updateCart} businessType={restaurant?.businessType} />
                     ))}
                   </div>
                 </div>
@@ -414,18 +454,22 @@ export default function CustomerMenu() {
                 </div>
                 {tableNo === 'PREVIEW' ? (
                   <div className="border-t border-neutral-200 pt-4">
-                    <label className="mb-1 block text-xs font-bold text-neutral-400 uppercase">Table Number</label>
+                    <label className="mb-1 block text-xs font-bold text-neutral-400 uppercase">
+                      {(restaurant?.businessType === 'Salon' || restaurant?.businessType === 'Clinic') ? 'Staff Code' : 'Table Number'}
+                    </label>
                     <input
                       required
                       value={checkoutTableNo}
                       onChange={e => setCheckoutTableNo(e.target.value)}
-                      placeholder="Enter table number"
+                      placeholder={(restaurant?.businessType === 'Salon' || restaurant?.businessType === 'Clinic') ? 'Enter staff code (e.g. 101)' : 'Enter table number'}
                       className="w-full bg-transparent text-lg font-bold outline-none"
                     />
                   </div>
                 ) : (
                   <div className="border-t border-neutral-200 pt-4 flex justify-between items-center">
-                    <span className="text-sm font-bold text-neutral-500">Table Number</span>
+                    <span className="text-sm font-bold text-neutral-500">
+                      {(restaurant?.businessType === 'Salon' || restaurant?.businessType === 'Clinic') ? 'Staff Code' : 'Table Number'}
+                    </span>
                     <span className="rounded-md bg-orange-100 px-2 py-0.5 text-xs font-black text-orange-600 uppercase tracking-widest">{tableNo}</span>
                   </div>
                 )}
@@ -450,7 +494,7 @@ export default function CustomerMenu() {
   );
 }
 
-function MenuItemCard({ item, cart, updateCart }: { key?: string | number, item: MenuItem, cart: OrderItem[], updateCart: (i: MenuItem, d: number) => void }) {
+function MenuItemCard({ item, cart, updateCart, businessType }: { key?: string | number, item: MenuItem, cart: OrderItem[], updateCart: (i: MenuItem, d: number) => void, businessType?: string }) {
   const inCart = cart.find(i => i.id === item.id);
   return (
     <motion.div 
@@ -464,25 +508,27 @@ function MenuItemCard({ item, cart, updateCart }: { key?: string | number, item:
       )}
       <div className="flex-1">
         <h4 className="font-bold text-neutral-900">{item.name}</h4>
-        <p className="text-xs text-neutral-500 line-clamp-1">{item.description}</p>
+        {businessType !== 'Salon' && businessType !== 'Clinic' && (
+          <p className="text-xs text-neutral-500 line-clamp-1">{item.description}</p>
+        )}
         <p className="mt-1 font-bold text-neutral-900">{formatCurrency(item.price)}</p>
       </div>
       <div className="flex flex-col items-center gap-2">
         {inCart ? (
-          <div className="flex items-center gap-3 rounded-full bg-neutral-100 p-1">
-            <button onClick={() => updateCart(item, -1)} className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-orange-600 shadow-sm"><Minus className="h-4 w-4" /></button>
-            <span className="text-sm font-bold">{inCart.quantity}</span>
-            <button 
-              disabled={inCart.quantity >= item.stockCount}
-              onClick={() => updateCart(item, 1)} 
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-orange-600 shadow-sm disabled:opacity-50"
-             >
-               <Plus className="h-4 w-4" />
-             </button>
-          </div>
+            <div className="flex items-center gap-3 rounded-full bg-neutral-100 p-1">
+              <button onClick={() => updateCart(item, -1)} className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-orange-600 shadow-sm"><Minus className="h-4 w-4" /></button>
+              <span className="text-sm font-bold">{inCart.quantity}</span>
+              <button 
+                disabled={(businessType === 'Salon' || businessType === 'Clinic') ? true : (item.stockCount !== null && item.stockCount !== undefined) ? inCart.quantity >= item.stockCount : false}
+                onClick={() => updateCart(item, 1)} 
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-orange-600 shadow-sm disabled:opacity-50"
+               >
+                 <Plus className="h-4 w-4" />
+               </button>
+            </div>
         ) : (
           <button 
-            disabled={item.stockCount <= 0}
+            disabled={((businessType === 'Salon' || businessType === 'Clinic') && item.stockCount === 0) ? false : (item.stockCount !== null && item.stockCount !== undefined) ? item.stockCount <= 0 : false}
             onClick={() => updateCart(item, 1)}
             className="flex h-10 w-10 items-center justify-center rounded-2xl bg-orange-600 text-white shadow-lg shadow-orange-100 transition-transform active:scale-90 disabled:opacity-50 disabled:bg-neutral-300"
           >
@@ -494,7 +540,7 @@ function MenuItemCard({ item, cart, updateCart }: { key?: string | number, item:
   );
 }
 
-function OrderStatusView({ order, restaurantName, googleMapReviewLink }: { order: Order, restaurantName: string, googleMapReviewLink?: string }) {
+function OrderStatusView({ order, restaurantName, googleMapReviewLink, businessType }: { order: Order, restaurantName: string, googleMapReviewLink?: string, businessType?: string }) {
   const steps = [
     { label: 'Pending', status: 'PENDING', icon: Clock },
     { label: 'Accepted', status: 'ACCEPTED', icon: CheckCircle2 },
@@ -506,6 +552,27 @@ function OrderStatusView({ order, restaurantName, googleMapReviewLink }: { order
 
   const [showCompletionAlert, setShowCompletionAlert] = useState(false);
   const [hasAlerted, setHasAlerted] = useState(false);
+  const [isEditingStaffCode, setIsEditingStaffCode] = useState(false);
+  const [newStaffCode, setNewStaffCode] = useState(order.tableNo);
+  const [hasEditedStaffCode, setHasEditedStaffCode] = useState(() => localStorage.getItem("edited_code_" + order.id) === "true");
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  const submitNewStaffCode = async () => {
+    if (!newStaffCode.trim()) return;
+    setIsUpdating(true);
+    try {
+       await updateDoc(doc(db, 'orders', order.id), {
+          tableNo: newStaffCode.trim()
+       });
+       localStorage.setItem("edited_code_" + order.id, "true");
+       setHasEditedStaffCode(true);
+       setIsEditingStaffCode(false);
+    } catch (e) {
+       console.error("Failed to update staff code", e);
+    } finally {
+       setIsUpdating(false);
+    }
+  };
 
   useEffect(() => {
     if (order.status === 'COMPLETED' && !hasAlerted) {
@@ -577,11 +644,11 @@ function OrderStatusView({ order, restaurantName, googleMapReviewLink }: { order
         <div className="mb-8 flex justify-center">
           <div className="relative">
             <div className={cn("h-24 w-24 rounded-full border-4 p-4",
-              order.status === 'COMPLETED' ? "border-emerald-100 bg-emerald-50 text-emerald-500" :
+              order.status === 'COMPLETED' || ((businessType === 'Salon' || businessType === 'Clinic') && order.status !== 'CANCELLED') ? "border-emerald-100 bg-emerald-50 text-emerald-500" :
               order.status === 'CANCELLED' ? "border-red-100 bg-red-50 text-red-500" :
               "border-orange-100 bg-orange-50 text-orange-600"
             )}>
-              {order.status === 'COMPLETED' ? (
+              {order.status === 'COMPLETED' || ((businessType === 'Salon' || businessType === 'Clinic') && order.status !== 'CANCELLED') ? (
                 <CheckCircle2 className="h-full w-full" />
               ) : order.status === 'CANCELLED' ? (
                 <X className="h-full w-full" />
@@ -593,7 +660,7 @@ function OrderStatusView({ order, restaurantName, googleMapReviewLink }: { order
         </div>
 
         <h2 className="text-3xl font-black text-neutral-900">
-          {order.status === 'CANCELLED' ? 'Order Cancelled' : `Order ${order.status.toLowerCase()}!`}
+          {order.status === 'CANCELLED' ? 'Order Cancelled' : ((businessType === 'Salon' || businessType === 'Clinic') ? 'Thank You!' : `Order ${order.status.toLowerCase()}!`)}
         </h2>
         <p className="mt-2 text-neutral-500">
           From <span className="font-bold text-neutral-900">{restaurantName}</span>
@@ -613,37 +680,92 @@ function OrderStatusView({ order, restaurantName, googleMapReviewLink }: { order
             </button>
           </div>
         ) : (
-          <div className="mt-12 space-y-8 text-left">
-          {steps.map((step, i) => {
-            const isCompleted = i < currentIdx || order.status === 'COMPLETED';
-            const isActive = i === currentIdx;
-            const isLast = i === steps.length - 1;
-
-            return (
-              <div key={step.label} className="relative flex items-center gap-4">
-                {!isLast && (
-                  <div className={cn(
-                    "absolute left-[13px] top-8 w-0.5 h-10 transition-colors",
-                    isCompleted ? "bg-orange-500" : "bg-neutral-100"
-                  )} />
+          (businessType === 'Salon' || businessType === 'Clinic') ? (
+            <div className="mt-12 text-center space-y-4">
+              <h3 className="text-xl font-bold text-neutral-900">Submitted successfully!</h3>
+              <p className="text-sm text-neutral-500">Your selections have been sent.</p>
+              
+              <div className="mt-6 rounded-2xl bg-neutral-50 p-4 border border-neutral-100 mx-auto max-w-xs">
+                <p className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-2">Staff Code</p>
+                {isEditingStaffCode ? (
+                  <div className="flex items-center gap-2">
+                    <input 
+                      type="text" 
+                      value={newStaffCode} 
+                      onChange={e => setNewStaffCode(e.target.value)}
+                      className="w-full rounded-xl border border-neutral-200 px-3 py-2 text-center font-bold text-neutral-900 outline-none"
+                    />
+                    <button 
+                      disabled={isUpdating || !newStaffCode.trim()} 
+                      onClick={submitNewStaffCode}
+                      className="rounded-xl bg-orange-600 px-4 py-2 font-bold text-white transition-all hover:bg-orange-700 disabled:opacity-50"
+                    >
+                      {isUpdating ? '...' : <Check className="h-4 w-4" />}
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    <span className="text-2xl font-black text-neutral-900">{order.tableNo}</span>
+                    {!hasEditedStaffCode && (
+                      <button 
+                        onClick={() => setIsEditingStaffCode(true)}
+                        className="ml-3 text-sm font-bold text-orange-600 hover:text-orange-700 underline underline-offset-2"
+                      >
+                        Edit
+                      </button>
+                    )}
+                  </div>
                 )}
-                <div className={cn(
-                  "z-10 flex h-7 w-7 items-center justify-center rounded-full border-2 transition-all",
-                  isCompleted ? "bg-orange-500 border-orange-500 text-white" : 
-                  isActive ? "bg-white border-orange-500 text-orange-500" : "bg-white border-neutral-100 text-neutral-300"
-                )}>
-                  {isCompleted ? <CheckCircle2 className="h-4 w-4" /> : <step.icon className="h-4 w-4" />}
-                </div>
-                <div>
-                  <h4 className={cn("text-sm font-bold", isCompleted || isActive ? "text-neutral-900" : "text-neutral-300")}>
-                    {step.label}
-                  </h4>
-                  {isActive && <span className="text-[10px] font-black uppercase text-orange-600">Currently</span>}
-                </div>
+                {hasEditedStaffCode && !isEditingStaffCode && (
+                  <p className="mt-2 text-[10px] text-neutral-400 font-medium">Code can only be edited once.</p>
+                )}
               </div>
-            );
-          })}
-        </div>
+
+              <div className="pt-4">
+                <button 
+                  onClick={() => {
+                    localStorage.removeItem(`activeOrder_${order.restaurantId}`);
+                    window.location.reload();
+                  }}
+                  className="px-6 py-3 rounded-2xl bg-neutral-100 text-neutral-900 font-bold hover:bg-neutral-200 transition-colors"
+                >
+                  Go Back
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-12 space-y-8 text-left">
+            {steps.map((step, i) => {
+              const isCompleted = i < currentIdx || order.status === 'COMPLETED';
+              const isActive = i === currentIdx;
+              const isLast = i === steps.length - 1;
+
+              return (
+                <div key={step.label} className="relative flex items-center gap-4">
+                  {!isLast && (
+                    <div className={cn(
+                      "absolute left-[13px] top-8 w-0.5 h-10 transition-colors",
+                      isCompleted ? "bg-orange-500" : "bg-neutral-100"
+                    )} />
+                  )}
+                  <div className={cn(
+                    "z-10 flex h-7 w-7 items-center justify-center rounded-full border-2 transition-all",
+                    isCompleted ? "bg-orange-500 border-orange-500 text-white" : 
+                    isActive ? "bg-white border-orange-500 text-orange-500" : "bg-white border-neutral-100 text-neutral-300"
+                  )}>
+                    {isCompleted ? <CheckCircle2 className="h-4 w-4" /> : <step.icon className="h-4 w-4" />}
+                  </div>
+                  <div>
+                    <h4 className={cn("text-sm font-bold", isCompleted || isActive ? "text-neutral-900" : "text-neutral-300")}>
+                      {step.label}
+                    </h4>
+                    {isActive && <span className="text-[10px] font-black uppercase text-orange-600">Currently</span>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          )
         )}
 
         {order.status !== 'CANCELLED' && (
@@ -652,10 +774,12 @@ function OrderStatusView({ order, restaurantName, googleMapReviewLink }: { order
               <span className="text-neutral-400">Subtotal</span>
               <span className="text-neutral-900">{formatCurrency(order.totalAmount)}</span>
             </div>
-            <div className="mt-2 flex justify-between text-sm font-bold">
-              <span className="text-neutral-400">Estimated Time</span>
-              <span className="text-neutral-900">15-20 mins</span>
-            </div>
+            {(businessType !== 'Salon' && businessType !== 'Clinic') && (
+              <div className="mt-2 flex justify-between text-sm font-bold">
+                <span className="text-neutral-400">Estimated Time</span>
+                <span className="text-neutral-900">15-20 mins</span>
+              </div>
+            )}
           </div>
         )}
 
@@ -673,7 +797,9 @@ function OrderStatusView({ order, restaurantName, googleMapReviewLink }: { order
         )}
 
         <p className="mt-8 text-xs text-neutral-400">
-          {order.status === 'CANCELLED' ? 'You may close this page.' : 'Keep this page open to track your meal.'}
+          {order.status === 'CANCELLED' ? 'You may close this page.' : (
+            (businessType === 'Salon' || businessType === 'Clinic') ? 'You may close this page.' : 'Keep this page open to track your meal.'
+          )}
         </p>
       </motion.div>
     </div>

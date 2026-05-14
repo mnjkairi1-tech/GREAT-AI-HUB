@@ -1,3 +1,10 @@
+export interface StaffMember {
+  id: string;
+  name: string;
+  code: string;
+  shop?: string;
+}
+
 export interface Restaurant {
   id: string;
   name: string;
@@ -7,6 +14,8 @@ export interface Restaurant {
   description?: string;
   staffCode?: string;
   staffEmails?: string[];
+  staffMembers?: StaffMember[];
+  shops?: string[];
   requestAccessEmails?: string[];
   createdAt: any;
 }
@@ -14,6 +23,7 @@ export interface Restaurant {
 export interface MenuItem {
   id: string;
   restaurantId: string;
+  businessType?: string;
   name: string;
   description?: string;
   price: number;
@@ -36,8 +46,10 @@ export type OrderStatus = 'PENDING' | 'ACCEPTED' | 'PREPARING' | 'COMPLETED' | '
 export interface Order {
   id: string;
   restaurantId: string;
+  businessType?: string;
   tableNo: string;
   customerName: string;
+  staffCode?: string;
   items: OrderItem[];
   totalAmount: number;
   status: OrderStatus;

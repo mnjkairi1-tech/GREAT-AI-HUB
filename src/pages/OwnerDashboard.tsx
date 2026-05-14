@@ -17,7 +17,7 @@ import {
   arrayUnion,
   arrayRemove
 } from 'firebase/firestore';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { onAuthStateChanged, signOut, deleteUser, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { format, isToday, isThisMonth } from 'date-fns';
@@ -56,15 +56,30 @@ import {
   Package,
   Bell,
   TrendingUp,
-  AlertTriangle
+  AlertTriangle,
+  UserX
 } from 'lucide-react';
 import { cn, formatCurrency, handleFirestoreError, OperationType } from '../lib/utils';
-import { MenuItem, Order, Restaurant, OrderStatus, QrTable } from '../types';
+import { MenuItem, Order, Restaurant, OrderStatus, QrTable, StaffMember } from '../types';
 import { BUSINESS_TYPES } from '../constants';
+
+const filterByBusinessType = <T extends { businessType?: string, category?: string }>(items: T[], currentType: string): T[] => {
+  return items.filter(item => {
+    if (item.businessType) return item.businessType === currentType;
+    if ('category' in item) {
+       const cat = item.category as string;
+       if (currentType === 'Salon') return ['Hair', 'Face', 'Spa & Massage', 'Other Services', 'Inventory Product'].includes(cat);
+       if (currentType === 'Clinic') return ['Consultation', 'Diagnostics', 'Treatment', 'Other Services', 'Inventory Product'].includes(cat);
+       return ['Main Course', 'Snacks', 'Drinks', 'Desserts', 'Inventory Product'].includes(cat);
+    }
+    return true; 
+  });
+};
 
 export default function OwnerDashboard() {
   const [activeTab, setActiveTab] = useState<'home' | 'orders' | 'menu' | 'qr' | 'settings' | 'analytics' | 'staff'>('home');
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
+  const [allRestaurants, setAllRestaurants] = useState<Restaurant[]>([]);
   const [loading, setLoading] = useState(true);
   const [isStaff, setIsStaff] = useState(false);
   const navigate = useNavigate();
@@ -76,43 +91,43 @@ export default function OwnerDashboard() {
         setLoading(true);
         try {
           // 1. Try finding as owner
-          let q = query(collection(db, 'restaurants'), where('ownerId', '==', user.uid));
-          let snapshot = await getDocs(q);
+          let qOwner = query(collection(db, 'restaurants'), where('ownerId', '==', user.uid));
+          let snapOwner = await getDocs(qOwner);
           
-          let restaurantDoc = null;
-          let isStaffFound = false;
+          // 2. Try finding as staff
+          let qStaff = query(collection(db, 'restaurants'), where('staffEmails', 'array-contains', user.email));
+          let snapStaff = await getDocs(qStaff);
 
-          if (!snapshot.empty) {
-            restaurantDoc = snapshot.docs[0];
-            setIsStaff(false);
-          } else {
-            // 2. Try finding as staff
-            q = query(collection(db, 'restaurants'), where('staffEmails', 'array-contains', user.email));
-            snapshot = await getDocs(q);
-            if (!snapshot.empty) {
-                restaurantDoc = snapshot.docs[0];
-                setIsStaff(true);
-                isStaffFound = true;
+          let loadedRestaurants: Restaurant[] = [];
+          let isUserStaffForCurrent = false;
+
+          snapOwner.docs.forEach(doc => {
+            const data = doc.data();
+            loadedRestaurants.push({ id: doc.id, ...data, businessType: data.businessType || 'Restaurant' } as Restaurant);
+          });
+
+          snapStaff.docs.forEach(doc => {
+            // avoid duplicates if somehow they are both (shouldn't happen usually)
+            if (!loadedRestaurants.find(r => r.id === doc.id)) {
+              const data = doc.data();
+              loadedRestaurants.push({ id: doc.id, ...data, businessType: data.businessType || 'Restaurant' } as Restaurant);
             }
-          }
+          });
           
-          if (!restaurantDoc) {
+          if (loadedRestaurants.length === 0) {
             navigate('/setup');
           } else {
-            const docData = restaurantDoc;
-            const data = docData.data();
-            
-            // Still ensure ownerEmail exists for the restaurant document
-            if (!data.ownerEmail && user.email && !isStaffFound) {
-                await updateDoc(doc(db, 'restaurants', docData.id), { ownerEmail: user.email });
+            setAllRestaurants(loadedRestaurants);
+            // Default to first restaurant
+            const first = loadedRestaurants[0];
+            setRestaurant(first);
+            // Check if user is staff for the first restaurant
+            setIsStaff(!snapOwner.docs.find(d => d.id === first.id));
+
+            // Ensure ownerEmail is set if they are the owner
+            if (!setIsStaff && !first.ownerEmail && user.email) {
+               await updateDoc(doc(db, 'restaurants', first.id), { ownerEmail: user.email });
             }
-            
-            setRestaurant({ 
-              id: docData.id, 
-              ...data,
-              ownerEmail: data.ownerEmail || (isStaffFound ? '' : user.email),
-              businessType: data.businessType || 'Restaurant' 
-            } as Restaurant);
           }
         } catch (error) {
           handleFirestoreError(error, OperationType.LIST, 'restaurants');
@@ -130,6 +145,17 @@ export default function OwnerDashboard() {
 
   const handleLogout = () => signOut(auth).then(() => navigate('/'));
 
+  const handleSwitchRestaurant = (resId: string) => {
+    const selected = allRestaurants.find(r => r.id === resId);
+    if (selected) {
+      setRestaurant(selected);
+      // If user is owner, they are not staff for this one unless they only exist in snapStaff.
+      // (A simplified check: if their uid matches the ownerId, they are not staff)
+      setIsStaff(selected.ownerId !== auth.currentUser?.uid);
+      setActiveTab('home');
+    }
+  };
+
   if (loading || !restaurant) return (
     <div className="flex h-screen items-center justify-center">
       <div className="h-8 w-8 animate-spin rounded-full border-4 border-orange-500 border-t-transparent" />
@@ -141,8 +167,16 @@ export default function OwnerDashboard() {
       {/* Sidebar */}
       <aside className="fixed bottom-0 z-50 flex w-full border-t border-neutral-200 bg-white p-2 lg:relative lg:bottom-auto lg:z-0 lg:w-64 lg:flex-col lg:border-r lg:border-t-0 lg:p-6">
         <div className="hidden lg:mb-10 lg:block">
-          <h1 className="text-xl font-bold text-orange-600">{restaurant.name}</h1>
-          <p className="text-xs text-neutral-400">Merchant Dashboard</p>
+          <select 
+            value={restaurant.id}
+            onChange={(e) => handleSwitchRestaurant(e.target.value)}
+            className="w-full text-xl font-bold text-orange-600 bg-transparent border-none outline-none cursor-pointer truncate hover:text-orange-700"
+          >
+            {allRestaurants.map(r => (
+              <option key={r.id} value={r.id} className="text-base text-neutral-900">{r.name}</option>
+            ))}
+          </select>
+          <p className="text-xs text-neutral-400 mt-1">Merchant Dashboard</p>
         </div>
 
           <nav className="flex w-full justify-around gap-2 lg:flex-col lg:justify-start">
@@ -214,6 +248,18 @@ export default function OwnerDashboard() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto p-4 pb-24 lg:p-10 lg:pb-10">
+        <div className="mb-6 lg:hidden">
+          <select 
+            value={restaurant.id}
+            onChange={(e) => handleSwitchRestaurant(e.target.value)}
+            className="w-full text-xl font-bold text-orange-600 bg-transparent border-none outline-none cursor-pointer truncate hover:text-orange-700"
+          >
+            {allRestaurants.map(r => (
+              <option key={r.id} value={r.id} className="text-base text-neutral-900">{r.name}</option>
+            ))}
+          </select>
+          <p className="text-xs text-neutral-400 mt-1">Merchant Dashboard</p>
+        </div>
         <header className="mb-8 flex items-center justify-between">
           <h2 className="text-2xl font-bold text-neutral-900 capitalize">
             {activeTab === 'home' && 'Home'}
@@ -227,27 +273,30 @@ export default function OwnerDashboard() {
         </header>
 
         <div className="mx-auto max-w-5xl">
-          {activeTab === 'home' && <HomeTab restaurantId={restaurant.id} businessType={restaurant.businessType} setActiveTab={setActiveTab} isStaff={isStaff} />}
+          {activeTab === 'home' && <HomeTab restaurant={restaurant} setActiveTab={setActiveTab} isStaff={isStaff} />}
           {activeTab === 'orders' && <OrdersTab restaurantId={restaurant.id} businessType={restaurant.businessType} />}
           {activeTab === 'menu' && <MenuTab restaurantId={restaurant.id} businessType={restaurant.businessType} />}
           {!isStaff && (
             <>
               {activeTab === 'staff' && <StaffManagementTab restaurant={restaurant} setRestaurant={setRestaurant} />}
-              {activeTab === 'qr' && <QRTab restaurantId={restaurant.id} name={restaurant.name} />}
+              {activeTab === 'qr' && <QRTab restaurantId={restaurant.id} name={restaurant.name} businessType={restaurant.businessType} />}
               {activeTab === 'analytics' && <AnalyticsTab restaurantId={restaurant.id} businessType={restaurant.businessType} />}
             </>
           )}
-          {activeTab === 'settings' && <SettingsTab onLogout={handleLogout} restaurant={restaurant} setActiveTab={setActiveTab} isStaff={isStaff} />}
+          {activeTab === 'settings' && <SettingsTab onLogout={handleLogout} restaurant={restaurant} setRestaurant={setRestaurant} setActiveTab={setActiveTab} isStaff={isStaff} />}
         </div>
       </main>
     </div>
   );
 }
 
-function HomeTab({ restaurantId, businessType, setActiveTab, isStaff }: { restaurantId: string, businessType: string, setActiveTab: (tab: 'home' | 'orders' | 'menu' | 'qr' | 'settings' | 'analytics' | 'staff') => void, isStaff: boolean }) {
+function HomeTab({ restaurant, setActiveTab, isStaff }: { restaurant: Restaurant, setActiveTab: (tab: 'home' | 'orders' | 'menu' | 'qr' | 'settings' | 'analytics' | 'staff') => void, isStaff: boolean }) {
+  const restaurantId = restaurant.id;
+  const businessType = restaurant.businessType;
   const [orders, setOrders] = useState<Order[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [topItemsFilter, setTopItemsFilter] = useState<'daily' | 'weekly' | 'monthly' | 'yearly'>('yearly');
 
   useEffect(() => {
     const qPathOrders = 'orders';
@@ -264,12 +313,12 @@ function HomeTab({ restaurantId, businessType, setActiveTab, isStaff }: { restau
 
     const unsubOrders = onSnapshot(qOrders, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
-      setOrders(data);
+      setOrders(filterByBusinessType(data, businessType));
     });
 
     const unsubMenu = onSnapshot(qMenu, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MenuItem));
-      setMenuItems(data);
+      setMenuItems(filterByBusinessType(data, businessType));
       setLoading(false);
     });
 
@@ -299,17 +348,45 @@ function HomeTab({ restaurantId, businessType, setActiveTab, isStaff }: { restau
   // Calculate top selling items
   const itemCounts: Record<string, number> = {};
   orders.forEach(order => {
-    order.items.forEach(item => {
-      itemCounts[item.name] = (itemCounts[item.name] || 0) + item.quantity;
-    });
+    const orderDate = new Date(order.createdAt?.toDate?.() || order.createdAt);
+    const timeDiff = today.getTime() - orderDate.getTime();
+    const daysDiff = timeDiff / (1000 * 3600 * 24);
+    
+    let isIncluded = false;
+    if (topItemsFilter === 'daily') isIncluded = daysDiff <= 1;
+    else if (topItemsFilter === 'weekly') isIncluded = daysDiff <= 7;
+    else if (topItemsFilter === 'monthly') isIncluded = daysDiff <= 30;
+    else if (topItemsFilter === 'yearly') isIncluded = daysDiff <= 365;
+    
+    if (isIncluded) {
+      order.items.forEach(item => {
+        itemCounts[item.name] = (itemCounts[item.name] || 0) + item.quantity;
+      });
+    }
   });
   const topItems = Object.entries(itemCounts)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5); // Take top 5
 
+  // Calculate shop-wise revenue
+  const shopEarnings: Record<string, number> = {};
+  if (restaurant.shops && restaurant.shops.length > 0) {
+    const staffCodeToShop: Record<string, string> = {};
+    (restaurant.staffMembers || []).forEach(staff => {
+      staffCodeToShop[staff.code] = staff.shop || restaurant.shops![0];
+    });
+
+    const completedOrders = orders.filter(o => o.status === 'COMPLETED');
+    completedOrders.forEach(order => {
+      const code = order.staffCode || order.tableNo; // fallback to tableNo if staffCode isn't set, depending on how they check out
+      const shop = staffCodeToShop[code] || 'Unknown';
+      shopEarnings[shop] = (shopEarnings[shop] || 0) + order.totalAmount;
+    });
+  }
+
   // Alerts
-  const inventoryNotifications = menuItems
-    .filter(item => !item.isAvailable || (item.stockCount !== undefined && item.stockCount < 5))
+  const inventoryNotifications = (businessType === 'Salon' || businessType === 'Clinic') ? [] : menuItems
+    .filter(item => !item.isAvailable || (item.stockCount !== undefined && item.stockCount !== null && item.stockCount < 5))
     .map(item => ({
       id: `inv-${item.id}`,
       type: 'INVENTORY' as const,
@@ -322,7 +399,7 @@ function HomeTab({ restaurantId, businessType, setActiveTab, isStaff }: { restau
     .map(order => ({
       id: `ord-${order.id}`,
       type: 'ORDER' as const,
-      message: `New order received from Table ${order.tableNo}!`
+      message: `New order received from ${(businessType === 'Salon' || businessType === 'Clinic') ? 'Staff Code' : 'Table'} ${order.tableNo}!`
     }));
 
   const allNotifications = [...inventoryNotifications, ...orderNotifications];
@@ -364,6 +441,21 @@ function HomeTab({ restaurantId, businessType, setActiveTab, isStaff }: { restau
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {restaurant.businessType === 'Salon' && restaurant.shops && restaurant.shops.length > 0 && !isStaff && (
+          <div className="rounded-3xl border border-neutral-100 bg-white p-6 shadow-sm md:col-span-2">
+            <h3 className="font-bold flex items-center gap-2 text-neutral-900 mb-4">
+              <DollarSign className="h-4 w-4" /> Shop-wise Revenue (All Time)
+            </h3>
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+              {Object.entries(shopEarnings).map(([shop, earning]) => (
+                <div key={shop} className="rounded-2xl border border-neutral-100 bg-neutral-50 p-4">
+                  <span className="text-xs font-black uppercase tracking-widest text-neutral-400">{shop}</span>
+                  <div className="mt-1 text-2xl font-bold text-emerald-600">₹{earning.toLocaleString()}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="rounded-3xl border border-neutral-100 bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-bold flex items-center gap-2 text-neutral-900">
@@ -378,16 +470,18 @@ function HomeTab({ restaurantId, businessType, setActiveTab, isStaff }: { restau
             <ul className="space-y-3">
                {miniOrders.map(order => (
                  <li key={order.id} className="flex justify-between items-center text-sm p-3 rounded-2xl bg-neutral-50">
-                    <span className="font-bold">Table {order.tableNo} → {order.items.map(i => `${i.quantity}x ${i.name}`).join(', ')}</span>
-                    <span className={cn("text-[10px] uppercase font-black tracking-widest px-2 py-1 rounded-full",
-                       order.status === 'PENDING' ? 'bg-amber-100 text-amber-700' :
-                       order.status === 'PREPARING' ? 'bg-orange-100 text-orange-700' :
-                       'bg-blue-100 text-blue-700'
-                    )}>
-                      {order.status === 'PENDING' && '⏳ Pending'}
-                      {order.status === 'PREPARING' && '⏳ Preparing'}
-                      {order.status === 'ACCEPTED' && '✅ Accepted'}
-                    </span>
+                    <span className="font-bold">{(businessType === 'Salon' || businessType === 'Clinic') ? 'Staff Code' : 'Table'} {order.tableNo} → {order.items.map(i => `${i.quantity}x ${i.name}`).join(', ')}</span>
+                    {!(businessType === 'Salon' || businessType === 'Clinic') && (
+                      <span className={cn("text-[10px] uppercase font-black tracking-widest px-2 py-1 rounded-full",
+                         order.status === 'PENDING' ? 'bg-amber-100 text-amber-700' :
+                         order.status === 'PREPARING' ? 'bg-orange-100 text-orange-700' :
+                         'bg-blue-100 text-blue-700'
+                      )}>
+                        {order.status === 'PENDING' && '⏳ Pending'}
+                        {order.status === 'PREPARING' && '⏳ Preparing'}
+                        {order.status === 'ACCEPTED' && '✅ Accepted'}
+                      </span>
+                    )}
                  </li>
                ))}
             </ul>
@@ -395,9 +489,21 @@ function HomeTab({ restaurantId, businessType, setActiveTab, isStaff }: { restau
         </div>
 
         <div className="rounded-3xl border border-neutral-100 bg-white p-6 shadow-sm">
-          <h3 className="font-bold flex items-center gap-2 text-neutral-900 mb-4">
-            <TrendingUp className="h-4 w-4" /> {(businessType === 'Salon' || businessType === 'Clinic') ? 'Top Services' : 'Top Selling Items'}
-          </h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-bold flex items-center gap-2 text-neutral-900">
+              <TrendingUp className="h-4 w-4" /> {(businessType === 'Salon' || businessType === 'Clinic') ? 'Top Services' : 'Top Selling Items'}
+            </h3>
+            <select
+              value={topItemsFilter}
+              onChange={(e) => setTopItemsFilter(e.target.value as any)}
+              className="bg-neutral-50 border border-neutral-200 text-xs font-bold rounded-lg px-2 py-1 outline-none focus:border-orange-500 text-neutral-600"
+            >
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+              <option value="yearly">Yearly</option>
+            </select>
+          </div>
           {topItems.length === 0 ? (
             <p className="text-neutral-500 text-sm text-center py-4">No sales yet</p>
           ) : (
@@ -465,7 +571,8 @@ function OrdersTab({ restaurantId, businessType }: { restaurantId: string, busin
       orderBy('createdAt', 'desc')
     );
     return onSnapshot(q, (snapshot) => {
-      setOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order)));
+      const fetchedOrders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
+      setOrders(filterByBusinessType(fetchedOrders, businessType));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, qPath);
     });
@@ -499,14 +606,14 @@ function OrdersTab({ restaurantId, businessType }: { restaurantId: string, busin
       )}
       <AnimatePresence>
         {activeOrders.map((order) => (
-          <OrderCard key={order.id} order={order} updateStatus={updateStatus} statusMap={statusMap} />
+          <OrderCard key={order.id} order={order} updateStatus={updateStatus} statusMap={statusMap} businessType={businessType} />
         ))}
       </AnimatePresence>
     </div>
   );
 }
 
-function OrderCard({ order, updateStatus, statusMap }: { key?: React.Key, order: Order, updateStatus: (id: string, s: OrderStatus) => Promise<void>, statusMap: any }) {
+function OrderCard({ order, updateStatus, statusMap, businessType }: { key?: React.Key, order: Order, updateStatus: (id: string, s: OrderStatus) => Promise<void>, statusMap: any, businessType: string }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -522,13 +629,15 @@ function OrderCard({ order, updateStatus, statusMap }: { key?: React.Key, order:
         onClick={() => setExpanded(!expanded)}
       >
         <div>
-          <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Table {order.tableNo}</span>
+          <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400">{(businessType === 'Salon' || businessType === 'Clinic') ? 'Staff Code' : 'Table'} {order.tableNo}</span>
           <h3 className="font-bold text-neutral-900 truncate max-w-[120px]">{order.customerName}</h3>
         </div>
         <div className="text-right flex flex-col items-end">
-           <div className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-widest", statusMap[order.status].color)}>
-            {order.status}
-          </div>
+           {(businessType !== 'Salon' && businessType !== 'Clinic') && (
+             <div className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-widest", statusMap[order.status].color)}>
+              {order.status}
+            </div>
+           )}
           <span className="text-xs font-bold text-neutral-900 mt-1">{formatCurrency(order.totalAmount)}</span>
         </div>
       </div>
@@ -559,37 +668,56 @@ function OrderCard({ order, updateStatus, statusMap }: { key?: React.Key, order:
       </AnimatePresence>
 
       <div className="mt-auto grid grid-cols-2 divide-x divide-neutral-100 border-t border-neutral-100">
-        {order.status === 'PENDING' && (
-          <button 
-            onClick={(e) => { e.stopPropagation(); updateStatus(order.id, 'ACCEPTED'); }}
-            className="flex items-center justify-center gap-1.5 p-3 text-[11px] font-black uppercase tracking-widest text-blue-600 hover:bg-blue-50 col-span-2"
-          >
-            <Check className="h-4 w-4" /> Accept
-          </button>
-        )}
-        {order.status === 'ACCEPTED' && (
-          <button 
-            onClick={(e) => { e.stopPropagation(); updateStatus(order.id, 'PREPARING'); }}
-            className="flex items-center justify-center gap-1.5 p-3 text-[11px] font-black uppercase tracking-widest text-orange-600 hover:bg-orange-50 col-span-2"
-          >
-            <Pizza className="h-4 w-4" /> PREP
-          </button>
-        )}
-        {['ACCEPTED', 'PREPARING'].includes(order.status) && (
-          <button 
-            onClick={(e) => { e.stopPropagation(); updateStatus(order.id, 'COMPLETED'); }}
-            className="flex items-center justify-center gap-1.5 p-3 text-[11px] font-black uppercase tracking-widest text-emerald-600 hover:bg-emerald-50 col-span-2"
-          >
-            <CheckCircle2 className="h-4 w-4" /> COMPLETE
-          </button>
-        )}
-        {['PENDING', 'ACCEPTED'].includes(order.status) && (
-           <button 
-             onClick={(e) => { e.stopPropagation(); updateStatus(order.id, 'CANCELLED'); }}
-             className="flex items-center justify-center gap-1.5 p-3 text-[11px] font-black uppercase tracking-widest text-neutral-400 hover:bg-red-50 hover:text-red-500 col-span-2 border-t border-neutral-100"
-           >
-             <X className="h-4 w-4" /> CANCEL
-           </button>
+        {(businessType === 'Salon' || businessType === 'Clinic') ? (
+          <>
+            <button 
+              onClick={(e) => { e.stopPropagation(); updateStatus(order.id, 'COMPLETED'); }}
+              className="flex items-center justify-center gap-1.5 p-3 text-[11px] font-black uppercase tracking-widest text-emerald-600 hover:bg-emerald-50 col-span-2"
+            >
+              <CheckCircle2 className="h-4 w-4" /> COMPLETE APPOINTMENT
+            </button>
+            <button 
+              onClick={(e) => { e.stopPropagation(); updateStatus(order.id, 'CANCELLED'); }}
+              className="flex items-center justify-center gap-1.5 p-3 text-[11px] font-black uppercase tracking-widest text-neutral-400 hover:bg-red-50 hover:text-red-500 col-span-2 border-t border-neutral-100"
+            >
+              <X className="h-4 w-4" /> CANCEL
+            </button>
+          </>
+        ) : (
+          <>
+            {order.status === 'PENDING' && (
+              <button 
+                onClick={(e) => { e.stopPropagation(); updateStatus(order.id, 'ACCEPTED'); }}
+                className="flex items-center justify-center gap-1.5 p-3 text-[11px] font-black uppercase tracking-widest text-blue-600 hover:bg-blue-50 col-span-2"
+              >
+                <Check className="h-4 w-4" /> Accept
+              </button>
+            )}
+            {order.status === 'ACCEPTED' && (
+              <button 
+                onClick={(e) => { e.stopPropagation(); updateStatus(order.id, 'PREPARING'); }}
+                className="flex items-center justify-center gap-1.5 p-3 text-[11px] font-black uppercase tracking-widest text-orange-600 hover:bg-orange-50 col-span-2"
+              >
+                <Pizza className="h-4 w-4" /> PREP
+              </button>
+            )}
+            {['ACCEPTED', 'PREPARING'].includes(order.status) && (
+              <button 
+                onClick={(e) => { e.stopPropagation(); updateStatus(order.id, 'COMPLETED'); }}
+                className="flex items-center justify-center gap-1.5 p-3 text-[11px] font-black uppercase tracking-widest text-emerald-600 hover:bg-emerald-50 col-span-2"
+              >
+                <CheckCircle2 className="h-4 w-4" /> COMPLETE
+              </button>
+            )}
+            {['PENDING', 'ACCEPTED'].includes(order.status) && (
+               <button 
+                 onClick={(e) => { e.stopPropagation(); updateStatus(order.id, 'CANCELLED'); }}
+                 className="flex items-center justify-center gap-1.5 p-3 text-[11px] font-black uppercase tracking-widest text-neutral-400 hover:bg-red-50 hover:text-red-500 col-span-2 border-t border-neutral-100"
+               >
+                 <X className="h-4 w-4" /> CANCEL
+               </button>
+            )}
+          </>
         )}
       </div>
     </motion.div>
@@ -598,10 +726,11 @@ function OrderCard({ order, updateStatus, statusMap }: { key?: React.Key, order:
 
 // --- TAB: Menu ---
 function MenuTab({ restaurantId, businessType }: { restaurantId: string, businessType: string }) {
+  const defaultCat = businessType === 'Salon' ? 'Hair' : businessType === 'Clinic' ? 'Consultation' : 'Main Course';
   const [items, setItems] = useState<MenuItem[]>([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: '', price: '', category: 'Main Course', description: '', imageUrl: '', stockCount: '' });
+  const [form, setForm] = useState({ name: '', price: '', category: defaultCat, description: '', imageUrl: '', stockCount: '' });
   const [searchTerm, setSearchTerm] = useState('');
   const navigate = useNavigate();
 
@@ -609,19 +738,21 @@ function MenuTab({ restaurantId, businessType }: { restaurantId: string, busines
     const qPath = 'menuItems';
     const q = query(collection(db, qPath), where('restaurantId', '==', restaurantId));
     return onSnapshot(q, (snapshot) => {
-      setItems(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MenuItem)));
+      const fetchedItems = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MenuItem));
+      setItems(filterByBusinessType(fetchedItems, businessType));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, qPath);
     });
   }, [restaurantId]);
 
   const filteredItems = items.filter(item =>
-    item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (item.description && item.description.toLowerCase().includes(searchTerm.toLowerCase()))
+    item.category !== 'Inventory Product' &&
+    (item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (item.description && item.description.toLowerCase().includes(searchTerm.toLowerCase())))
   );
 
   const resetForm = () => {
-    setForm({ name: '', price: '', category: 'Main Course', description: '', imageUrl: '', stockCount: '' });
+    setForm({ name: '', price: '', category: defaultCat, description: '', imageUrl: '', stockCount: '' });
     setEditingId(null);
     setIsFormOpen(false);
   };
@@ -630,20 +761,27 @@ function MenuTab({ restaurantId, businessType }: { restaurantId: string, busines
     e.preventDefault();
     const qPath = 'menuItems';
     try {
-      const stockVal = form.stockCount ? parseInt(form.stockCount) : 0;
+      const stockVal = form.stockCount !== '' ? parseInt(form.stockCount) : null;
       if (editingId) {
+        const item = items.find(i => i.id === editingId);
+        if (!item) throw new Error("Item not found");
+
         await updateDoc(doc(db, qPath, editingId), {
           ...form,
-          price: parseFloat(form.price),
+          restaurantId,
+          businessType,
+          isAvailable: item.isAvailable,
+          price: isNaN(parseFloat(form.price)) ? 0 : parseFloat(form.price),
           stockCount: stockVal,
           updatedAt: serverTimestamp()
         });
       } else {
         await addDoc(collection(db, qPath), {
           ...form,
-          price: parseFloat(form.price),
-          stockCount: stockVal,
           restaurantId,
+          businessType,
+          price: isNaN(parseFloat(form.price)) ? 0 : parseFloat(form.price),
+          stockCount: stockVal,
           isAvailable: true,
           updatedAt: serverTimestamp()
         });
@@ -681,7 +819,10 @@ function MenuTab({ restaurantId, businessType }: { restaurantId: string, busines
   const toggleAvailability = async (id: string, current: boolean) => {
     const path = `menuItems/${id}`;
     try {
-      await updateDoc(doc(db, 'menuItems', id), { isAvailable: !current });
+      const item = items.find(i => i.id === id);
+      if (!item) throw new Error("Item not found");
+      const { id: _, ...itemWithoutId } = item;
+      await updateDoc(doc(db, 'menuItems', id), { ...itemWithoutId, isAvailable: !current, updatedAt: serverTimestamp() });
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, path);
     }
@@ -757,7 +898,7 @@ function MenuTab({ restaurantId, businessType }: { restaurantId: string, busines
                 required 
                 value={form.name} 
                 onChange={e => setForm({...form, name: e.target.value})}
-                placeholder="Delicious Burger" 
+                placeholder={businessType === 'Salon' ? "Hair Spa" : businessType === 'Clinic' ? "Full Checkup" : "Delicious Burger"} 
                 className="w-full bg-transparent text-lg font-medium outline-none" 
               />
             </div>
@@ -779,14 +920,32 @@ function MenuTab({ restaurantId, businessType }: { restaurantId: string, busines
                 onChange={e => setForm({...form, category: e.target.value})}
                 className="w-full bg-transparent text-lg font-medium outline-none"
               >
-                <option>Main Course</option>
-                <option>Snacks</option>
-                <option>Drinks</option>
-                <option>Desserts</option>
+                {businessType === 'Salon' ? (
+                  <>
+                    <option>Hair</option>
+                    <option>Face</option>
+                    <option>Spa & Massage</option>
+                    <option>Other Services</option>
+                  </>
+                ) : businessType === 'Clinic' ? (
+                  <>
+                    <option>Consultation</option>
+                    <option>Diagnostics</option>
+                    <option>Treatment</option>
+                    <option>Other Services</option>
+                  </>
+                ) : (
+                  <>
+                    <option>Main Course</option>
+                    <option>Snacks</option>
+                    <option>Drinks</option>
+                    <option>Desserts</option>
+                  </>
+                )}
               </select>
             </div>
             <div className="md:col-span-2">
-              <label className="text-xs font-bold text-neutral-400">DESCRIPTION</label>
+              <label className="text-xs font-bold text-neutral-400">DESCRIPTION {businessType === 'Salon' ? '(OPTIONAL)' : ''}</label>
               <input 
                 value={form.description} 
                 onChange={e => setForm({...form, description: e.target.value})}
@@ -794,16 +953,18 @@ function MenuTab({ restaurantId, businessType }: { restaurantId: string, busines
                 className="w-full bg-transparent text-sm outline-none" 
               />
             </div>
-            <div>
-              <label className="text-xs font-bold text-neutral-400">STOCK QUANTITY</label>
-              <input 
-                type="number"
-                value={form.stockCount} 
-                onChange={e => setForm({...form, stockCount: e.target.value})}
-                placeholder="0" 
-                className="w-full bg-transparent text-sm outline-none" 
-              />
-            </div>
+            {!(businessType === 'Salon' || businessType === 'Clinic') && (
+              <div>
+                <label className="text-xs font-bold text-neutral-400">STOCK QUANTITY</label>
+                <input 
+                  type="number"
+                  value={form.stockCount} 
+                  onChange={e => setForm({...form, stockCount: e.target.value})}
+                  placeholder="0" 
+                  className="w-full bg-transparent text-sm outline-none" 
+                />
+              </div>
+            )}
             <div className="md:col-span-1">
               <label className="text-xs font-bold text-neutral-400">IMAGE URL</label>
               <input 
@@ -834,12 +995,16 @@ function MenuTab({ restaurantId, businessType }: { restaurantId: string, busines
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] font-black uppercase text-orange-500">{item.category}</span>
-                    <span className={cn("rounded-md px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest", item.stockCount > 0 ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600")}>
-                      {item.stockCount > 0 ? `${item.stockCount} In Stock` : 'Out of Stock'}
-                    </span>
+                    {businessType !== 'Salon' && businessType !== 'Clinic' && (
+                      <span className={cn("rounded-md px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest", item.stockCount > 0 ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600")}>
+                        {item.stockCount > 0 ? `${item.stockCount} In Stock` : 'Out of Stock'}
+                      </span>
+                    )}
                   </div>
                   <h4 className="font-bold text-neutral-900 mt-1">{item.name}</h4>
-                  <p className="text-xs text-neutral-500">{item.description}</p>
+                  {businessType !== 'Salon' && businessType !== 'Clinic' && (
+                    <p className="text-xs text-neutral-500">{item.description}</p>
+                  )}
                 </div>
                 <div className="text-right">
                   <p className="font-bold text-orange-600">{formatCurrency(item.price)}</p>
@@ -879,7 +1044,7 @@ function MenuTab({ restaurantId, businessType }: { restaurantId: string, busines
     </div>
   );
 }// --- TAB: QR Generation ---
-function QRTab({ restaurantId, name: restaurantName }: { restaurantId: string, name: string }) {
+function QRTab({ restaurantId, name: restaurantName, businessType }: { restaurantId: string, name: string, businessType: string }) {
   const [qrTables, setQrTables] = useState<QrTable[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
@@ -992,22 +1157,22 @@ function QRTab({ restaurantId, name: restaurantName }: { restaurantId: string, n
             </div>
 
             <div className="space-y-1">
-              <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Table Name (e.g. Table 1)</label>
+              <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">{businessType === 'Salon' ? 'Staff Code Description (e.g. Code 101)' : 'Table Name (e.g. Table 1)'}</label>
 
               <input 
                 required 
                 value={form.name} 
                 onChange={e => setForm({...form, name: e.target.value})}
-                placeholder="Table 1" 
+                placeholder={businessType === 'Salon' ? 'Staff 101' : 'Table 1'} 
                 className="w-full border-b border-neutral-100 py-2 text-lg font-bold outline-none focus:border-orange-500 bg-transparent" 
               />
             </div>
             
             <div className="space-y-1">
-              <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Table Number</label>
+              <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">{businessType === 'Salon' ? 'Staff Code (e.g. 101)' : 'Table Number'}</label>
               <input 
                 required 
-                type="number"
+                type="text"
                 value={form.tableNo} 
                 onChange={e => setForm({...form, tableNo: e.target.value})}
                 placeholder="1" 
@@ -1054,6 +1219,7 @@ function QRTab({ restaurantId, name: restaurantName }: { restaurantId: string, n
             onDelete={() => deleteQR(qr.id)}
             onEdit={() => handleEdit(qr)}
             targetLink={qr.dynamicLink}
+            businessType={businessType}
           />
         ))}
       </div>
@@ -1061,7 +1227,7 @@ function QRTab({ restaurantId, name: restaurantName }: { restaurantId: string, n
   );
 }
 
-function QRCard({ num, url, restaurantName, label, onDelete, onEdit, targetLink }: { 
+function QRCard({ num, url, restaurantName, label, onDelete, onEdit, targetLink, businessType }: { 
   key?: string | number,
   num: number, 
   url: string, 
@@ -1069,7 +1235,8 @@ function QRCard({ num, url, restaurantName, label, onDelete, onEdit, targetLink 
   label: string, 
   onDelete: () => void | Promise<void>,
   onEdit: () => void,
-  targetLink?: string
+  targetLink?: string,
+  businessType: string
 }) {
   const copyUrl = () => {
     navigator.clipboard.writeText(url);
@@ -1089,7 +1256,7 @@ function QRCard({ num, url, restaurantName, label, onDelete, onEdit, targetLink 
           <div>
             <h4 className="font-bold text-neutral-900 truncate max-w-[150px]">{label}</h4>
             <div className="mt-1">
-              <span className="rounded-md bg-orange-100 px-2 py-0.5 text-[10px] font-black text-orange-600 uppercase tracking-widest">Table {num}</span>
+              <span className="rounded-md bg-orange-100 px-2 py-0.5 text-[10px] font-black text-orange-600 uppercase tracking-widest">{(businessType === 'Salon' || businessType === 'Clinic') ? 'Code ' : 'Table '}{num}</span>
             </div>
           </div>
         </div>
@@ -1125,10 +1292,170 @@ function QRCard({ num, url, restaurantName, label, onDelete, onEdit, targetLink 
 }
 
 // --- TAB: Staff Management ---
-function StaffManagementTab({ restaurant, setRestaurant }: { restaurant: Restaurant, setRestaurant: React.Dispatch<React.SetStateAction<Restaurant | null>> }) {
-  const [newEmail, setNewEmail] = useState('');
-  const [updating, setUpdating] = useState(false);
+function StaffPerformanceAnalytics({ restaurantId, staffMembers }: { restaurantId: string, staffMembers: StaffMember[] }) {
+  const [activeCode, setActiveCode] = useState('');
+  const [activeName, setActiveName] = useState('');
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(false);
 
+  const fetchStaffAnalytics = async (code: string, name: string) => {
+    setLoading(true);
+    setActiveCode(code);
+    setActiveName(name);
+    try {
+      const q = query(
+        collection(db, 'orders'),
+        where('restaurantId', '==', restaurantId),
+        where('tableNo', '==', code),
+        where('status', '==', 'COMPLETED')
+      );
+      const snapshot = await getDocs(q);
+      const fetchedOrders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
+      setOrders(fetchedOrders);
+    } catch (e) {
+      console.error(e);
+      alert('Error fetching analytics');
+    }
+    setLoading(false);
+  };
+
+  const now = new Date();
+  
+  // Calculate periods
+  const isSameDay = (d: Date, ref: Date) => d.getDate() === ref.getDate() && d.getMonth() === ref.getMonth() && d.getFullYear() === ref.getFullYear();
+  const getWeekNumber = (d: Date) => { const first = new Date(d.getFullYear(), 0, 1); return Math.ceil((((d.getTime() - first.getTime()) / 86400000) + first.getDay() + 1) / 7); };
+  const isSameWeek = (d: Date, ref: Date) => getWeekNumber(d) === getWeekNumber(ref) && d.getFullYear() === ref.getFullYear();
+  const isSameMonth = (d: Date, ref: Date) => d.getMonth() === ref.getMonth() && d.getFullYear() === ref.getFullYear();
+  const isSameYear = (d: Date, ref: Date) => d.getFullYear() === ref.getFullYear();
+
+  let todayTotal = 0, weekTotal = 0, monthTotal = 0, yearTotal = 0;
+  let servicesCount = 0;
+
+  orders.forEach(order => {
+    const date = order.createdAt?.toDate ? order.createdAt.toDate() : new Date(order.createdAt);
+    const amount = order.totalAmount || 0;
+    const itemsCount = (order.items || []).reduce((acc, item) => acc + item.quantity, 0);
+    servicesCount += itemsCount;
+
+    if (isSameDay(date, now)) todayTotal += amount;
+    if (isSameWeek(date, now)) weekTotal += amount;
+    if (isSameMonth(date, now)) monthTotal += amount;
+    if (isSameYear(date, now)) yearTotal += amount;
+  });
+
+  if (!staffMembers || staffMembers.length === 0) return null;
+
+  return (
+    <div className="rounded-3xl border border-neutral-100 bg-white p-6 shadow-sm sm:p-8 mt-6">
+      <h3 className="mb-4 text-lg font-bold text-neutral-900">Staff Performance Analytics</h3>
+      
+      <div className="flex flex-wrap gap-2 mb-6">
+        {staffMembers.map(staff => (
+          <button
+            key={staff.id}
+            onClick={() => fetchStaffAnalytics(staff.code, staff.name)}
+            disabled={loading}
+            className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${activeCode === staff.code ? 'bg-orange-600 text-white shadow-md' : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'} disabled:opacity-50`}
+          >
+            {staff.name}
+          </button>
+        ))}
+      </div>
+
+      {loading && (
+        <div className="py-8 flex justify-center">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-neutral-200 border-t-orange-600" />
+        </div>
+      )}
+
+      {!loading && activeCode && (
+        <div className="space-y-4">
+          <h4 className="font-bold text-neutral-600">Analytics for <span className="text-neutral-900">{activeName}</span></h4>
+          {orders.length === 0 ? (
+             <p className="text-sm font-medium text-neutral-400 p-4 bg-neutral-50 rounded-xl">No completed services found for {activeName}.</p>
+          ) : (
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+              <div className="rounded-2xl border border-neutral-100 bg-neutral-50 p-4">
+                <span className="text-xs font-black uppercase tracking-widest text-neutral-400">Total Services</span>
+                <div className="mt-1 text-2xl font-bold text-neutral-900">{servicesCount}</div>
+              </div>
+              <div className="rounded-2xl border border-neutral-100 bg-neutral-50 p-4">
+                <span className="text-xs font-black uppercase tracking-widest text-neutral-400">Today</span>
+                <div className="mt-1 text-2xl font-bold text-emerald-600">₹{todayTotal.toLocaleString()}</div>
+              </div>
+              <div className="rounded-2xl border border-neutral-100 bg-neutral-50 p-4">
+                <span className="text-xs font-black uppercase tracking-widest text-neutral-400">This Month</span>
+                <div className="mt-1 text-2xl font-bold text-emerald-600">₹{monthTotal.toLocaleString()}</div>
+              </div>
+              <div className="rounded-2xl border border-neutral-100 bg-neutral-50 p-4">
+                <span className="text-xs font-black uppercase tracking-widest text-neutral-400">This Year</span>
+                <div className="mt-1 text-2xl font-bold text-emerald-600">₹{yearTotal.toLocaleString()}</div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StaffManagementTab({ restaurant, setRestaurant }: { restaurant: Restaurant, setRestaurant: React.Dispatch<React.SetStateAction<Restaurant | null>> }) {
+  const [newName, setNewName] = useState('');
+  const [newCode, setNewCode] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [newShopName, setNewShopName] = useState('');
+  const [updating, setUpdating] = useState(false);
+  const shops = restaurant.shops && restaurant.shops.length > 0 ? restaurant.shops : ['Main Shop'];
+  const [activeShop, setActiveShop] = useState(shops[0]);
+
+  const handleAddShop = async () => {
+    if (!newShopName.trim() || shops.includes(newShopName.trim())) return;
+    setUpdating(true);
+    const updatedShops = [...(restaurant.shops || []), newShopName.trim()];
+    try {
+      await updateDoc(doc(db, 'restaurants', restaurant.id), {
+        shops: updatedShops
+      });
+      setRestaurant({ ...restaurant, shops: updatedShops });
+      setNewShopName('');
+      setActiveShop(newShopName.trim());
+    } catch(e) {
+      handleFirestoreError(e, OperationType.UPDATE, 'restaurants');
+    }
+    setUpdating(false);
+  };
+
+  const handleAddStaffMember = async () => {
+    if (!newName || !newCode) return;
+    setUpdating(true);
+    const newStaff = { id: Math.random().toString(36).substr(2, 9), name: newName, code: newCode, shop: activeShop };
+    try {
+      await updateDoc(doc(db, 'restaurants', restaurant.id), {
+        staffMembers: arrayUnion(newStaff)
+      });
+      setRestaurant({ ...restaurant, staffMembers: [...(restaurant.staffMembers || []), newStaff] });
+      setNewName('');
+      setNewCode('');
+      alert('Staff member added!');
+    } catch(e) { 
+      handleFirestoreError(e, OperationType.UPDATE, 'restaurants');
+    }
+    setUpdating(false);
+  };
+  
+  const handleRemoveStaffMember = async (id: string, staff: StaffMember) => {
+    setUpdating(true);
+    try {
+      await updateDoc(doc(db, 'restaurants', restaurant.id), {
+        staffMembers: arrayRemove(staff)
+      });
+      setRestaurant({ ...restaurant, staffMembers: (restaurant.staffMembers || []).filter(s => s.id !== id) });
+    } catch(e) {
+      handleFirestoreError(e, OperationType.UPDATE, 'restaurants');
+    }
+    setUpdating(false);
+  }
+  
   const handleAddStaff = async () => {
     if (!newEmail) return;
     setUpdating(true);
@@ -1180,11 +1507,43 @@ function StaffManagementTab({ restaurant, setRestaurant }: { restaurant: Restaur
     
   return (
     <div className="space-y-6">
+
+    {/* Shops Navigation */}
+    {restaurant.businessType === 'Salon' && (
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        {shops.map(shop => (
+          <button
+            key={shop}
+            onClick={() => setActiveShop(shop)}
+            className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${activeShop === shop ? 'bg-neutral-900 text-white' : 'bg-white text-neutral-600 border border-neutral-200 hover:bg-neutral-50'}`}
+          >
+            {shop}
+          </button>
+        ))}
+        <div className="flex items-center gap-2 ml-auto">
+          <input 
+            type="text"
+            value={newShopName}
+            onChange={(e) => setNewShopName(e.target.value)}
+            placeholder="New shop..."
+            className="rounded-xl border border-neutral-200 px-3 py-2 text-sm outline-none w-32 focus:border-orange-500"
+          />
+          <button
+            disabled={updating || !newShopName}
+            onClick={handleAddShop}
+            className="rounded-xl bg-orange-100 text-orange-600 px-3 py-2 text-sm font-bold transition-all hover:bg-orange-200 disabled:opacity-50"
+          >
+            Add Shop
+          </button>
+        </div>
+      </div>
+    )}
+
     <div className="rounded-3xl border border-neutral-100 bg-white p-6 shadow-sm sm:p-8">
-      <h3 className="mb-4 text-lg font-bold text-neutral-900">Invite Stuff</h3>
+      <h3 className="mb-4 text-lg font-bold text-neutral-900">Invite Staff Admin {restaurant.businessType === 'Salon' ? `(${activeShop})` : ''}</h3>
       <button 
         onClick={handleCopyLink}
-        className="w-full rounded-xl border border-neutral-200 px-4 py-3 font-semibold text-neutral-700 transition-all hover:bg-neutral-50"
+        className="w-full mb-6 rounded-xl border border-neutral-200 px-4 py-3 font-semibold text-neutral-700 transition-all hover:bg-neutral-50"
       >
         Copy Invite Link
       </button>
@@ -1210,48 +1569,205 @@ function StaffManagementTab({ restaurant, setRestaurant }: { restaurant: Restaur
     </div>
 
     <div className="rounded-3xl border border-neutral-100 bg-white p-6 shadow-sm sm:p-8">
-      <h3 className="mb-4 text-lg font-bold text-neutral-900">Staff Management</h3>
-      <div className="mb-6 flex gap-2">
-        <input 
-            type="email"
-            value={newEmail}
-            onChange={(e) => setNewEmail(e.target.value)}
-            className="flex-1 rounded-xl border border-neutral-200 px-4 py-3 outline-none focus:border-orange-500"
-            placeholder="Staff Email"
-        />
-        <button 
-            disabled={updating}
-            onClick={handleAddStaff}
-            className="rounded-xl bg-orange-600 px-4 py-3 font-bold text-white transition-all hover:bg-orange-700 disabled:opacity-50"
-        >
-            Add
-        </button>
+      <h3 className="mb-4 text-lg font-bold text-neutral-900">{restaurant.businessType === 'Salon' ? `${activeShop} - ` : ''}Staff Members</h3>
+      
+      <div className="space-y-4 mb-6">
+        <h4 className="font-bold text-sm text-neutral-600">Register Staff Member (For tracking earnings)</h4>
+        <div className="flex gap-2">
+          <input 
+              type="text"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              className="flex-1 rounded-xl border border-neutral-200 px-4 py-3 outline-none focus:border-orange-500"
+              placeholder="Staff Name"
+          />
+          <input 
+              type="text"
+              value={newCode}
+              onChange={(e) => setNewCode(e.target.value)}
+              className="w-24 rounded-xl border border-neutral-200 px-4 py-3 outline-none focus:border-orange-500"
+              placeholder="Code"
+          />
+          <button 
+              disabled={updating}
+              onClick={handleAddStaffMember}
+              className="rounded-xl bg-orange-600 px-4 py-3 font-bold text-white transition-all hover:bg-orange-700 disabled:opacity-50"
+          >
+              Add
+          </button>
+        </div>
+        <div className="space-y-2">
+          {((restaurant.staffMembers || []).filter(s => restaurant.businessType !== 'Salon' || (s.shop || 'Main Shop') === activeShop)).map((staff, i) => (
+              <div key={i} className="flex justify-between items-center bg-neutral-50 p-3 rounded-xl">
+                  <span>{staff.name} (Code: {staff.code})</span>
+                  <button 
+                      disabled={updating}
+                      onClick={() => handleRemoveStaffMember(staff.id, staff)}
+                      className="text-red-500 font-bold"
+                  >
+                      Remove
+                  </button>
+              </div>
+          ))}
+        </div>
       </div>
-      <div className="space-y-2">
-        {(restaurant.staffEmails || []).map((email, i) => (
-            <div key={i} className="flex justify-between items-center bg-neutral-50 p-3 rounded-xl">
-                <span>{email}</span>
-                <button 
-                    disabled={updating}
-                    onClick={() => handleRemoveStaff(email)}
-                    className="text-red-500 font-bold"
-                >
-                    Remove
-                </button>
-            </div>
-        ))}
+
+      <div className="space-y-4">
+        <h4 className="font-bold text-sm text-neutral-600">Invite Email Admin</h4>
+        <div className="flex gap-2">
+          <input 
+              type="email"
+              value={newEmail}
+              onChange={(e) => setNewEmail(e.target.value)}
+              className="flex-1 rounded-xl border border-neutral-200 px-4 py-3 outline-none focus:border-orange-500"
+              placeholder="Staff Email"
+          />
+          <button 
+              disabled={updating}
+              onClick={handleAddStaff}
+              className="rounded-xl bg-orange-600 px-4 py-3 font-bold text-white transition-all hover:bg-orange-700 disabled:opacity-50"
+          >
+              Add
+          </button>
+        </div>
+        <div className="space-y-2">
+          {(restaurant.staffEmails || []).map((email, i) => (
+              <div key={i} className="flex justify-between items-center bg-neutral-50 p-3 rounded-xl">
+                  <span>{email}</span>
+                  <button 
+                      disabled={updating}
+                      onClick={() => handleRemoveStaff(email)}
+                      className="text-red-500 font-bold"
+                  >
+                      Remove
+                  </button>
+              </div>
+          ))}
+        </div>
       </div>
     </div>
+    <StaffPerformanceAnalytics restaurantId={restaurant.id} staffMembers={(restaurant.staffMembers || []).filter(s => restaurant.businessType !== 'Salon' || (s.shop || 'Main Shop') === activeShop)} />
+    </div>
+  );
+}
+
+function SalonProductInventory({ restaurant }: { restaurant: Restaurant }) {
+  const restaurantId = restaurant.id;
+  const [products, setProducts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [newName, setNewName] = useState('');
+  const [newStock, setNewStock] = useState('');
+
+  useEffect(() => {
+    const qPath = 'menuItems';
+    const q = query(collection(db, qPath), where('restaurantId', '==', restaurantId), where('category', '==', 'Inventory Product'));
+    return onSnapshot(q, (snapshot) => {
+      const fetchedProducts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+      setProducts(filterByBusinessType(fetchedProducts, restaurant.businessType));
+      setLoading(false);
+    });
+  }, [restaurantId, restaurant.businessType]);
+
+  const handleAddProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newName.trim() || !newStock) return;
+    try {
+      await addDoc(collection(db, 'menuItems'), {
+        restaurantId,
+        businessType: restaurant.businessType,
+        name: newName,
+        price: 0,
+        category: 'Inventory Product',
+        isAvailable: true,
+        stockCount: parseInt(newStock),
+        updatedAt: serverTimestamp()
+      });
+      setNewName('');
+      setNewStock('');
+    } catch (error) {
+      console.error(error);
+      alert('Error adding product');
+    }
+  };
+
+  const handleUpdateStock = async (id: string, delta: number, currentStock: number) => {
+    const newCount = currentStock + delta;
+    if (newCount < 0) return;
+    try {
+      await updateDoc(doc(db, 'menuItems', id), {
+        stockCount: newCount,
+        updatedAt: serverTimestamp()
+      });
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Remove this product?')) return;
+    try {
+      await deleteDoc(doc(db, 'menuItems', id));
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  if (loading) return null;
+
+  return (
+    <div className="rounded-3xl border border-neutral-100 bg-white p-6 shadow-sm sm:p-8 mt-8">
+      <h3 className="mb-4 text-lg font-bold text-neutral-900">Products Inventory</h3>
+      <p className="mb-6 text-sm text-neutral-500">Manage internal stock for physical products (e.g. Creams, Colors, Gels). These will NOT appear on your public menu.</p>
+      
+      <form onSubmit={handleAddProduct} className="mb-6 flex gap-2">
+        <input 
+          type="text" 
+          value={newName} 
+          onChange={e => setNewName(e.target.value)} 
+          placeholder="Product Name" 
+          className="flex-1 rounded-xl border border-neutral-200 px-4 py-2 text-sm outline-none focus:border-orange-500" 
+        />
+        <input 
+          type="number" 
+          value={newStock} 
+          onChange={e => setNewStock(e.target.value)} 
+          placeholder="Qty" 
+          className="w-24 rounded-xl border border-neutral-200 px-4 py-2 text-sm outline-none focus:border-orange-500" 
+        />
+        <button type="submit" className="rounded-xl bg-neutral-900 px-4 py-2 text-sm font-bold text-white hover:bg-neutral-800">Add</button>
+      </form>
+
+      <div className="space-y-3">
+        {products.length === 0 && <p className="text-sm font-medium text-neutral-400">No products added yet.</p>}
+        {products.map(product => (
+          <div key={product.id} className="flex flex-col sm:flex-row sm:items-center justify-between rounded-2xl bg-neutral-50 p-4 gap-4">
+            <span className="font-bold text-neutral-900">{product.name}</span>
+            <div className="flex items-center gap-4 justify-between sm:justify-end">
+              <span className={cn("text-xs font-black uppercase tracking-widest min-w-[80px]", product.stockCount <= 5 ? "text-red-500" : "text-emerald-500")}>
+                {product.stockCount} in stock
+              </span>
+              <div className="flex items-center gap-1">
+                <button onClick={() => handleUpdateStock(product.id, -1, product.stockCount)} className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-neutral-600 shadow-sm hover:scale-105 active:scale-95 border border-neutral-200">-</button>
+                <button onClick={() => handleUpdateStock(product.id, 1, product.stockCount)} className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-neutral-600 shadow-sm hover:scale-105 active:scale-95 border border-neutral-200">+</button>
+              </div>
+              <button onClick={() => handleDelete(product.id)} className="text-neutral-400 hover:text-red-500 ml-2">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
 // --- TAB: Settings ---
-function SettingsTab({ onLogout, restaurant, setActiveTab, isStaff }: { onLogout: () => void, restaurant: Restaurant, setActiveTab: (tab: 'home' | 'orders' | 'menu' | 'qr' | 'settings' | 'analytics' | 'staff') => void, isStaff: boolean }) {
+function SettingsTab({ onLogout, restaurant, setRestaurant, setActiveTab, isStaff }: { onLogout: () => void, restaurant: Restaurant, setRestaurant: React.Dispatch<React.SetStateAction<Restaurant | null>>, setActiveTab: (tab: 'home' | 'orders' | 'menu' | 'qr' | 'settings' | 'analytics' | 'staff') => void, isStaff: boolean }) {
   const [businessType, setBusinessType] = useState(restaurant.businessType);
   const [staffCode, setStaffCode] = useState(restaurant.staffCode || '');
   const [updating, setUpdating] = useState(false);
   const [updatingCode, setUpdatingCode] = useState(false);
+  const navigate = useNavigate();
 
   const handleUpdateType = async (newType: string) => {
     setUpdating(true);
@@ -1279,12 +1795,84 @@ function SettingsTab({ onLogout, restaurant, setActiveTab, isStaff }: { onLogout
     }
   };
 
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const handleDeleteAccount = async () => {
+    try {
+      setUpdating(true);
+      // 1. Delete restaurant-related data
+      const collectionsToDelete = ['orders', 'menuItems', 'qrTables'];
+      for (const col of collectionsToDelete) {
+        const q = query(collection(db, col), where('restaurantId', '==', restaurant.id));
+        const snapshot = await getDocs(q);
+        for (const docSnapshot of snapshot.docs) {
+          await deleteDoc(doc(db, col, docSnapshot.id));
+        }
+      }
+
+      // Also delete staff code if exists
+      if (restaurant.staffCode) {
+        await deleteDoc(doc(db, 'staffCodes', restaurant.staffCode)).catch(()=> {});
+      }
+
+      // 2. Delete restaurant
+      await deleteDoc(doc(db, 'restaurants', restaurant.id));
+
+      // 3. Delete user
+      if (auth.currentUser) {
+        await deleteUser(auth.currentUser);
+        navigate('/');
+      } else {
+        throw new Error('No user logged in.');
+      }
+    } catch (e: any) {
+      console.error('Delete account error:', e);
+      if (e.code === 'auth/requires-recent-login') {
+        const msg = 'To delete your account, please log out and log in again, then try to delete your account.';
+        console.error(msg);
+        alert(msg); // fallback, though iframe issue might happen, it's better than nothing
+      } else {
+        console.error('Failed to delete account: ' + (e.message || 'Unknown error'));
+      }
+    } finally {
+      setUpdating(false);
+      setShowDeleteConfirm(false);
+    }
+  };
+
   return (
     <div className="space-y-8 max-w-2xl">
       {!isStaff && (
         <div className="rounded-3xl border border-neutral-100 bg-white p-6 shadow-sm sm:p-8">
           <h3 className="mb-4 text-lg font-bold text-neutral-900">Account Settings</h3>
           
+          <div className="mb-6">
+            <label className="mb-2 block text-sm font-medium text-neutral-700">Business Name</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={restaurant.name}
+                onChange={(e) => setRestaurant({...restaurant, name: e.target.value})}
+                className="flex-1 rounded-xl border border-neutral-200 px-4 py-3 outline-none focus:border-orange-500"
+              />
+              <button
+                disabled={updating}
+                onClick={async () => {
+                  setUpdating(true);
+                  try {
+                    await updateDoc(doc(db, 'restaurants', restaurant.id), { name: restaurant.name });
+                  } catch (e) {
+                    handleFirestoreError(e, OperationType.UPDATE, 'restaurants');
+                  }
+                  setUpdating(false);
+                }}
+                className="rounded-xl bg-orange-600 px-4 py-3 font-bold text-white transition-all hover:bg-orange-700 disabled:opacity-50"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+
           <div className="mb-6">
             <label className="mb-2 block text-sm font-medium text-neutral-700">Business Type</label>
             <select
@@ -1316,6 +1904,42 @@ function SettingsTab({ onLogout, restaurant, setActiveTab, isStaff }: { onLogout
               </button>
             </div>
           </div>
+
+            <div className="border-t border-neutral-100 pt-6">
+              {showDeleteConfirm ? (
+                <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+                  <h4 className="mb-2 font-bold text-red-700">Are you absolutely sure?</h4>
+                  <p className="mb-4 text-sm text-red-600">
+                    This will permanently delete your account, business data, menu items, orders, and all other associated data. This action cannot be undone.
+                  </p>
+                  <div className="flex gap-3">
+                    <button
+                      disabled={updating}
+                      onClick={handleDeleteAccount}
+                      className="flex-1 rounded-lg bg-red-600 py-2.5 font-bold text-white transition-all hover:bg-red-700 disabled:opacity-50"
+                    >
+                      {updating ? 'Deleting...' : 'Yes, Delete Everything'}
+                    </button>
+                    <button
+                      disabled={updating}
+                      onClick={() => setShowDeleteConfirm(false)}
+                      className="flex-1 rounded-lg bg-white px-4 py-2.5 font-bold text-neutral-700 border border-neutral-200 transition-all hover:bg-neutral-50 disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                   disabled={updating}
+                   onClick={() => setShowDeleteConfirm(true)}
+                   className="flex items-center gap-2 rounded-xl bg-red-50 px-4 py-3 font-bold text-red-600 transition-all hover:bg-red-100 active:scale-95 disabled:opacity-50"
+               >
+                   <UserX className="h-5 w-5" />
+                   Delete Account & All Data
+               </button>
+              )}
+            </div>
         </div>
       )}
 
@@ -1346,6 +1970,10 @@ function SettingsTab({ onLogout, restaurant, setActiveTab, isStaff }: { onLogout
             </button>
           </div>
         </div>
+
+        {restaurant.businessType === 'Salon' && (
+           <SalonProductInventory restaurant={restaurant} />
+        )}
     </div>
   );
 }
@@ -1365,7 +1993,7 @@ function AnalyticsTab({ restaurantId, businessType }: { restaurantId: string, bu
 
     return onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
-      setOrders(data);
+      setOrders(filterByBusinessType(data, businessType));
       setLoading(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, qPath);
@@ -1477,7 +2105,7 @@ function AnalyticsTab({ restaurantId, businessType }: { restaurantId: string, bu
                     <tr key={order.id}>
                       <td className="py-4 pr-4 whitespace-nowrap">{dateInfo ? format(dateInfo, 'MMM dd, h:mm a') : '-'}</td>
                       <td className="py-4 pr-4 font-medium text-neutral-900 whitespace-nowrap">{order.customerName}</td>
-                      <td className="py-4 pr-4 whitespace-nowrap">{businessType === 'Salon' ? `Table ${order.tableNo}` : `Table ${order.tableNo}`}</td>
+                      <td className="py-4 pr-4 whitespace-nowrap">{businessType === 'Salon' ? `Staff Code ${order.tableNo}` : `Table ${order.tableNo}`}</td>
                       <td className="py-4 text-right font-black text-neutral-900 whitespace-nowrap">{formatCurrency(order.totalAmount)}</td>
                     </tr>
                   )

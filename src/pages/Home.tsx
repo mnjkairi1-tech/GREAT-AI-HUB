@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendEmailVerification, signOut } from 'firebase/auth';
+import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendEmailVerification, signOut, sendPasswordResetEmail } from 'firebase/auth';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 import { motion } from 'motion/react';
@@ -50,6 +50,20 @@ export default function Home() {
       await signInWithPopup(auth, provider);
     } catch (error) {
       console.error('Google Login failed:', error);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!email) {
+      alert("Please enter your email first to reset your password.");
+      return;
+    }
+    try {
+      await sendPasswordResetEmail(auth, email);
+      alert("Password reset email sent! Please check your inbox.");
+    } catch (error: any) {
+      console.error('Password reset failed:', error);
+      alert(error.message || "Failed to send reset email.");
     }
   };
 
@@ -156,6 +170,11 @@ export default function Home() {
                     <Lock className="absolute left-3 top-3.5 h-5 w-5 text-neutral-400" />
                     <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} className="w-full border border-neutral-200 pl-10 pr-4 py-3 rounded-xl" />
                 </div>
+                {mode === 'login' && (
+                    <div className="text-right">
+                        <button type="button" onClick={handleForgotPassword} className="text-sm font-bold text-orange-600 hover:text-orange-700">Forgot Password?</button>
+                    </div>
+                )}
                 <button onClick={handleEmailAuth} className="w-full bg-orange-600 text-white font-bold py-3 rounded-xl">{mode === 'login' ? 'Login' : 'Sign Up'}</button>
                 <button onClick={() => setMode('welcome')} className="w-full text-neutral-500 text-sm">Back</button>
             </div>

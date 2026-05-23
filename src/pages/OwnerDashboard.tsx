@@ -61,7 +61,8 @@ import {
   UserX,
   UserPlus,
   BookOpen,
-  Search
+  Search,
+  Calculator
 } from 'lucide-react';
 import { cn, formatCurrency, handleFirestoreError, OperationType } from '../lib/utils';
 import { MenuItem, Order, Restaurant, OrderStatus, QrTable, StaffMember, StoreCustomer } from '../types';
@@ -83,12 +84,39 @@ const filterByBusinessType = <T extends { businessType?: string, category?: stri
 function GeneralStorePos({ restaurant }: { restaurant: Restaurant }) {
   const [view, setView] = useState<'HOME' | 'CREDIT' | 'ADD_CUST'>('HOME');
   const [loading, setLoading] = useState(false);
+  const [showCalc, setShowCalc] = useState(false);
+  const [activeInput, setActiveInput] = useState<'amount' | 'staffCode' | 'custCode' | null>(null);
 
   const [amount, setAmount] = useState('');
   const [staffCode, setStaffCode] = useState(localStorage.getItem('gsStaffCode') || '');
   const [custCode, setCustCode] = useState('');
   const [custName, setCustName] = useState('');
   const [foundCust, setFoundCust] = useState<StoreCustomer | null>(null);
+
+  const handleNumpadPress = (btn: string) => {
+    if (activeInput === 'amount') {
+      if (btn === '⌫') setAmount(prev => prev.slice(0, -1));
+      else setAmount(prev => prev + btn);
+    } else if (activeInput === 'staffCode') {
+      if (btn === '⌫') setStaffCode(prev => prev.slice(0, -1));
+      else if (btn !== '.') setStaffCode(prev => prev + btn);
+    } else if (activeInput === 'custCode') {
+      if (btn === '⌫') setCustCode(prev => prev.slice(0, -1));
+      else if (btn !== '.') setCustCode(prev => prev + btn);
+    }
+  };
+
+  const getParsedAmount = (val: string): number => {
+    try {
+      if (!val) return 0;
+      const sanitized = val.replace(/[^0-9+\-*/.]/g, '');
+      if (!sanitized) return 0;
+      const evaluated = Function(`"use strict";return (${sanitized})`)();
+      return Number(evaluated) || 0;
+    } catch {
+      return 0;
+    }
+  };
 
   useEffect(() => {
     localStorage.setItem('gsStaffCode', staffCode);
@@ -121,7 +149,8 @@ function GeneralStorePos({ restaurant }: { restaurant: Restaurant }) {
 
   const handleCashSale = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!amount || Number(amount) <= 0) {
+    const finalAmount = getParsedAmount(amount);
+    if (finalAmount <= 0) {
       alert("Please enter a valid amount first!");
       return;
     }
@@ -132,8 +161,8 @@ function GeneralStorePos({ restaurant }: { restaurant: Restaurant }) {
         businessType: restaurant.businessType,
         tableNo: restaurant.enableStaffCode ? (staffCode || 'Unknown') : 'Owner',
         customerName: 'Cash Customer',
-        items: [{ id: 'pos', name: 'Store Sale', price: Number(amount), quantity: 1 }],
-        totalAmount: Number(amount),
+        items: [{ id: 'pos', name: 'Store Sale', price: finalAmount, quantity: 1 }],
+        totalAmount: finalAmount,
         status: 'COMPLETED',
         paymentMethod: 'CASH',
         createdAt: serverTimestamp(),
@@ -201,7 +230,8 @@ function GeneralStorePos({ restaurant }: { restaurant: Restaurant }) {
   const handleCreditSale = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!foundCust) return;
-    if (!amount || Number(amount) <= 0) {
+    const finalAmount = getParsedAmount(amount);
+    if (finalAmount <= 0) {
       alert("Please enter a valid amount at the top first!");
       return;
     }
@@ -213,15 +243,15 @@ function GeneralStorePos({ restaurant }: { restaurant: Restaurant }) {
         tableNo: restaurant.enableStaffCode ? (staffCode || 'Unknown') : 'Owner',
         customerName: foundCust.name,
         storeCustomerCode: foundCust.code,
-        items: [{ id: 'credit', name: 'Credit Sale', price: Number(amount), quantity: 1 }],
-        totalAmount: Number(amount),
+        items: [{ id: 'credit', name: 'Credit Sale', price: finalAmount, quantity: 1 }],
+        totalAmount: finalAmount,
         status: 'COMPLETED',
         paymentMethod: 'CREDIT',
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
       await updateDoc(doc(db, 'storeCustomers', foundCust.id), {
-        creditBalance: increment(Number(amount))
+        creditBalance: increment(finalAmount)
       });
 
       setAmount('');
@@ -234,28 +264,75 @@ function GeneralStorePos({ restaurant }: { restaurant: Restaurant }) {
   };
 
   return (
-    <div className="max-w-md mx-auto space-y-6 pt-6 animate-in fade-in zoom-in-95 duration-200">
+    <div className={`max-w-md mx-auto space-y-6 pt-6 animate-in fade-in zoom-in-95 duration-200 ${activeInput ? 'pb-[400px]' : 'pb-20'}`}>
       
       {/* ALWAYS VISIBLE TOP SECTION - amount & staff */}
       <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-sm space-y-4">
          <div>
-           <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest pl-2">Enter Amount (₹)</label>
+           <div className="flex items-center justify-between pl-2 pr-1 mb-2">
+             <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Enter Amount (₹)</label>
+             <button onClick={() => { setShowCalc(!showCalc); setActiveInput(null); }} className={`p-1.5 rounded-xl transition-all ${showCalc ? 'bg-orange-100 text-orange-600' : 'bg-neutral-100 text-neutral-400 hover:text-neutral-600'}`}>
+               <Calculator className="h-4 w-4" />
+             </button>
+           </div>
            <input 
-             type="number" 
-             value={amount}
-             onChange={e => setAmount(e.target.value)}
-             className="w-full text-5xl font-black bg-neutral-50 border-none rounded-2xl p-4 text-center outline-none focus:ring-4 focus:ring-orange-100 placeholder:text-neutral-200"
+             type={showCalc ? "text" : "button"}
+             value={amount || (showCalc ? '' : '0')}
+             readOnly={!showCalc}
+             onClick={(e) => { 
+                if (!showCalc) {
+                   setActiveInput('amount');
+                   const target = e.currentTarget;
+                   setTimeout(() => { target.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 100);
+                }
+             }}
+             onChange={(e) => { 
+                if (showCalc) {
+                   const val = e.target.value;
+                   if (/^[0-9+\-*/.]*$/.test(val)) setAmount(val);
+                }
+             }}
+             className={`w-full text-5xl font-black border-none rounded-2xl p-4 text-center outline-none focus:ring-4 focus:ring-orange-100 placeholder:text-neutral-200 ${!showCalc ? 'cursor-pointer text-neutral-900 bg-neutral-50 active:bg-neutral-100 tracking-tight' : 'bg-neutral-50'}`}
              placeholder="0"
            />
+           {showCalc && (
+             <div className="mt-3 grid grid-cols-4 gap-2 animate-in slide-in-from-top-2 fade-in duration-200">
+                {['7','8','9','/','4','5','6','*','1','2','3','-','C','0','.','+'].map(btn => (
+                  <button 
+                    key={btn} 
+                    onClick={() => {
+                        if (btn === 'C') setAmount('');
+                        else setAmount(prev => prev + btn);
+                    }} 
+                    className={`py-3 rounded-xl font-bold text-lg transition-colors active:scale-95 ${['/','*','-','+'].includes(btn) ? 'bg-orange-50 text-orange-600' : btn === 'C' ? 'bg-red-50 text-red-600' : 'bg-neutral-50 hover:bg-neutral-100 text-neutral-700'}`}
+                  >
+                    {btn}
+                  </button>
+                ))}
+                <button 
+                  onClick={() => {
+                    const res = getParsedAmount(amount);
+                    if (res > 0) setAmount(String(res));
+                  }} 
+                  className="col-span-4 py-3 rounded-xl bg-orange-600 shadow-sm text-white font-black text-xl hover:bg-orange-700 active:scale-95 transition-all"
+                >
+                  =
+                </button>
+             </div>
+           )}
          </div>
          {restaurant.enableStaffCode && (
            <div>
              <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest pl-2">Staff Code (Optional)</label>
              <input 
-               type="text" 
+               type="button" 
                value={staffCode}
-               onChange={e => setStaffCode(e.target.value)}
-               className="w-full text-lg font-bold bg-neutral-50 border-none rounded-xl p-3 text-center outline-none focus:ring-4 focus:ring-orange-100"
+               onClick={(e) => {
+                  setActiveInput('staffCode');
+                  const target = e.currentTarget;
+                  setTimeout(() => { target.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 100);
+               }}
+               className="w-full text-lg font-bold bg-neutral-50 hover:bg-neutral-100 active:bg-neutral-200 border-none rounded-xl p-3 text-center outline-none focus:ring-4 focus:ring-orange-100 cursor-pointer h-[52px]"
                placeholder="e.g. 101"
              />
            </div>
@@ -291,12 +368,14 @@ function GeneralStorePos({ restaurant }: { restaurant: Restaurant }) {
            {!foundCust ? (
              <div className="space-y-3">
                <input 
-                 autoFocus
-                 type="text" 
-                 value={custCode}
-                 onChange={e => setCustCode(e.target.value.toUpperCase())}
-                 placeholder="Customer Code"
-                 className="w-full text-xl font-bold bg-white rounded-xl p-4 text-center outline-none uppercase font-mono border border-orange-200 focus:border-orange-500"
+                 type="button" 
+                 value={custCode || 'Customer Code'}
+                 onClick={(e) => {
+                    setActiveInput('custCode');
+                    const target = e.currentTarget;
+                    setTimeout(() => { target.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 100);
+                 }}
+                 className={`w-full text-xl font-bold bg-white rounded-xl p-4 text-center outline-none uppercase font-mono border border-orange-200 focus:border-orange-500 cursor-pointer ${!custCode ? 'text-neutral-400' : 'text-neutral-900'} h-[62px]`}
                />
                <button disabled={loading || !custCode} onClick={handleVerifyCust} className="w-full bg-neutral-900 hover:bg-black text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-colors">
                  {loading ? 'Searching...' : <><Search className="h-5 w-5" /> Verify Customer</>}
@@ -335,11 +414,14 @@ function GeneralStorePos({ restaurant }: { restaurant: Restaurant }) {
                className="w-full text-lg font-bold bg-white rounded-xl p-4 outline-none border border-blue-200 focus:border-blue-500"
              />
              <input 
-               type="text" 
-               value={custCode}
-               onChange={e => setCustCode(e.target.value.toUpperCase())}
-               placeholder="Unique Code (e.g. CODE-1)"
-               className="w-full text-lg font-bold bg-white rounded-xl p-4 outline-none uppercase font-mono border border-blue-200 focus:border-blue-500"
+               type="button" 
+               value={custCode || 'Unique Code (e.g. 98765..)'}
+               onClick={(e) => {
+                  setActiveInput('custCode');
+                  const target = e.currentTarget;
+                  setTimeout(() => { target.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 100);
+               }}
+               className={`w-full text-lg font-bold bg-white rounded-xl p-4 text-left outline-none uppercase font-mono border border-blue-200 focus:border-blue-500 cursor-pointer ${!custCode ? 'text-neutral-400' : 'text-neutral-900'} h-[62px]`}
              />
              <button disabled={loading || !custName || !custCode} onClick={() => handleAddCust()} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl flex items-center justify-center transition-colors">
                {loading ? 'Saving...' : 'Add Customer'}
@@ -347,7 +429,30 @@ function GeneralStorePos({ restaurant }: { restaurant: Restaurant }) {
            </div>
         </div>
       )}
-      
+      {/* Floating Numpad Overlay for custom numeric entry */}
+      {activeInput && (
+        <div className="fixed inset-x-0 bottom-0 z-[100] animate-in slide-in-from-bottom flex justify-center pb-8 border-t border-neutral-200 bg-white md:bg-transparent md:border-none shadow-[0_-10px_40px_rgba(0,0,0,0.1)]">
+          <div className="w-full max-w-md bg-white rounded-t-3xl pt-4 px-4 pb-2">
+            <div className="flex justify-between items-center mb-4 px-2">
+              <span className="text-xs font-black text-neutral-400 tracking-wider">
+                 {activeInput === 'amount' ? 'ENTER AMOUNT' : activeInput === 'staffCode' ? 'STAFF CODE' : 'CUSTOMER CODE'}
+              </span>
+              <button onClick={() => setActiveInput(null)} className="text-orange-600 font-bold active:scale-95 text-sm p-2 bg-orange-50 rounded-xl">DONE</button>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+               {['1','2','3','4','5','6','7','8','9','0','⌫'].map((btn, idx) => (
+                 <button 
+                   key={btn} 
+                   onClick={() => handleNumpadPress(btn)} 
+                   className={`py-4 rounded-2xl font-bold text-2xl transition-colors active:scale-95 ${btn === '⌫' ? 'bg-red-50 text-red-600' : 'bg-neutral-50 hover:bg-neutral-100 text-neutral-800'} ${btn === '0' ? 'col-span-2' : ''}`}
+                 >
+                   {btn}
+                 </button>
+               ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -357,6 +462,12 @@ function StoreCustomersTab({ restaurant }: { restaurant: Restaurant }) {
   const [selectedCust, setSelectedCust] = useState<StoreCustomer | null>(null);
   const [custOrders, setCustOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredCustomers = customers.filter(c => 
+    c.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    c.code.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   useEffect(() => {
     if (selectedCust) {
@@ -460,23 +571,35 @@ function StoreCustomersTab({ restaurant }: { restaurant: Restaurant }) {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-sm flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-neutral-900 flex items-center gap-2">
-            <BookOpen className="text-blue-500" /> Udhaari Book
-          </h2>
-          <p className="text-sm text-neutral-500 mt-1">View and manage customer credit</p>
+      <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-sm flex flex-col gap-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-neutral-900 flex items-center gap-2">
+              <BookOpen className="text-blue-500" /> Udhaari Book
+            </h2>
+            <p className="text-sm text-neutral-500 mt-1">View and manage customer credit</p>
+          </div>
+        </div>
+        <div className="flex items-center bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-3">
+          <Search className="h-5 w-5 text-neutral-400 mr-2" />
+          <input
+            type="text"
+            placeholder="Search by name or code..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="w-full bg-transparent border-none focus:outline-none focus:ring-0 text-neutral-900 placeholder:text-neutral-400 font-medium"
+          />
         </div>
       </div>
 
       <div className="bg-white rounded-3xl border border-neutral-100 p-2 shadow-sm">
         {loading ? (
           <p className="p-4 text-sm text-neutral-500">Loading customers...</p>
-        ) : customers.length === 0 ? (
+        ) : filteredCustomers.length === 0 ? (
           <p className="p-4 text-sm text-neutral-500">No customers found.</p>
         ) : (
           <div className="divide-y divide-neutral-100">
-            {customers.map(cust => (
+            {filteredCustomers.map(cust => (
               <button 
                 key={cust.id} 
                 onClick={() => setSelectedCust(cust)}

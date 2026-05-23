@@ -94,12 +94,29 @@ function GeneralStorePos({ restaurant }: { restaurant: Restaurant }) {
     localStorage.setItem('gsStaffCode', staffCode);
   }, [staffCode]);
 
+  useEffect(() => {
+    if (view !== 'HOME') {
+      window.history.pushState({ modal: view }, '');
+      const handlePop = () => {
+         // when user swipes back, reset the local view instead of exiting
+         setView('HOME');
+         setCustCode(''); setCustName(''); setFoundCust(null);
+      };
+      window.addEventListener('popstate', handlePop);
+      return () => window.removeEventListener('popstate', handlePop);
+    }
+  }, [view]);
+
   const reset = () => {
     setCustCode(''); setCustName('');
     setAmount('');
     setStaffCode('');
     setFoundCust(null);
-    setView('HOME');
+    if (view !== 'HOME') {
+      window.history.back(); // let the popstate handler do the rest
+    } else {
+      setView('HOME');
+    }
   };
 
   const handleCashSale = async (e?: React.FormEvent) => {
@@ -122,7 +139,6 @@ function GeneralStorePos({ restaurant }: { restaurant: Restaurant }) {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
-      alert('Cash sale recorded!');
       setAmount('');
       reset();
     } catch (err) {
@@ -151,7 +167,6 @@ function GeneralStorePos({ restaurant }: { restaurant: Restaurant }) {
         creditBalance: 0,
         createdAt: serverTimestamp()
       });
-      alert('Customer added successfully!');
       if (amount && Number(amount) > 0) {
         setFoundCust({ id: docRef.id, restaurantId: restaurant.id, name: custName, code: custCode, creditBalance: 0, createdAt: new Date() });
         setView('CREDIT');
@@ -209,7 +224,6 @@ function GeneralStorePos({ restaurant }: { restaurant: Restaurant }) {
         creditBalance: increment(Number(amount))
       });
 
-      alert('Udhaari recorded successfully!');
       setAmount('');
       reset();
     } catch (err) {
@@ -345,6 +359,15 @@ function StoreCustomersTab({ restaurant }: { restaurant: Restaurant }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (selectedCust) {
+      window.history.pushState({ modal: 'custDetails' }, '');
+      const handlePop = () => setSelectedCust(null);
+      window.addEventListener('popstate', handlePop);
+      return () => window.removeEventListener('popstate', handlePop);
+    }
+  }, [selectedCust]);
+
+  useEffect(() => {
     const q = query(collection(db, 'storeCustomers'), where('restaurantId', '==', restaurant.id));
     const unsub = onSnapshot(q, (snap) => {
       const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as StoreCustomer));
@@ -386,7 +409,7 @@ function StoreCustomersTab({ restaurant }: { restaurant: Restaurant }) {
       <div className="space-y-6 animate-in slide-in-from-right-4">
         <div className="flex items-center justify-between bg-white p-4 rounded-3xl border border-neutral-100 shadow-sm">
            <div className="flex items-center gap-3">
-             <button onClick={() => setSelectedCust(null)} className="p-2 hover:bg-neutral-100 rounded-full text-neutral-500">
+             <button onClick={() => window.history.back()} className="p-2 hover:bg-neutral-100 rounded-full text-neutral-500">
                <ChevronRight className="h-6 w-6 rotate-180" />
              </button>
              <div>
@@ -480,7 +503,22 @@ function StoreCustomersTab({ restaurant }: { restaurant: Restaurant }) {
 }
 
 export default function OwnerDashboard() {
-  const [activeTab, setActiveTab] = useState<'home' | 'orders' | 'menu' | 'qr' | 'settings' | 'analytics' | 'staff' | 'customers'>('home');
+  const initialTab = (window.location.hash.replace('#', '') || 'home') as any;
+  const [activeTab, setActiveTabRaw] = useState<'home' | 'orders' | 'menu' | 'qr' | 'settings' | 'analytics' | 'staff' | 'customers'>(initialTab);
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace('#', '');
+      if (hash) setActiveTabRaw(hash as any);
+      else setActiveTabRaw('home');
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  const setActiveTab = (tab: any) => {
+    window.location.hash = tab;
+  };
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [allRestaurants, setAllRestaurants] = useState<Restaurant[]>([]);
   const [loading, setLoading] = useState(true);

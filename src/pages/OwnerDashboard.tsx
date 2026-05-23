@@ -15,7 +15,8 @@ import {
   deleteDoc,
   orderBy,
   arrayUnion,
-  arrayRemove
+  arrayRemove,
+  increment
 } from 'firebase/firestore';
 import { onAuthStateChanged, signOut, deleteUser, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
 import { useNavigate } from 'react-router-dom';
@@ -57,10 +58,13 @@ import {
   Bell,
   TrendingUp,
   AlertTriangle,
-  UserX
+  UserX,
+  UserPlus,
+  BookOpen,
+  Search
 } from 'lucide-react';
 import { cn, formatCurrency, handleFirestoreError, OperationType } from '../lib/utils';
-import { MenuItem, Order, Restaurant, OrderStatus, QrTable, StaffMember } from '../types';
+import { MenuItem, Order, Restaurant, OrderStatus, QrTable, StaffMember, StoreCustomer } from '../types';
 import { BUSINESS_TYPES } from '../constants';
 
 const filterByBusinessType = <T extends { businessType?: string, category?: string }>(items: T[], currentType: string): T[] => {
@@ -76,8 +80,407 @@ const filterByBusinessType = <T extends { businessType?: string, category?: stri
   });
 };
 
+function GeneralStorePos({ restaurant }: { restaurant: Restaurant }) {
+  const [view, setView] = useState<'HOME' | 'CREDIT' | 'ADD_CUST'>('HOME');
+  const [loading, setLoading] = useState(false);
+
+  const [amount, setAmount] = useState('');
+  const [staffCode, setStaffCode] = useState(localStorage.getItem('gsStaffCode') || '');
+  const [custCode, setCustCode] = useState('');
+  const [custName, setCustName] = useState('');
+  const [foundCust, setFoundCust] = useState<StoreCustomer | null>(null);
+
+  useEffect(() => {
+    localStorage.setItem('gsStaffCode', staffCode);
+  }, [staffCode]);
+
+  const reset = () => {
+    setCustCode(''); setCustName('');
+    setAmount('');
+    setStaffCode('');
+    setFoundCust(null);
+    setView('HOME');
+  };
+
+  const handleCashSale = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!amount || Number(amount) <= 0) {
+      alert("Please enter a valid amount first!");
+      return;
+    }
+    setLoading(true);
+    try {
+      await addDoc(collection(db, 'orders'), {
+        restaurantId: restaurant.id,
+        businessType: restaurant.businessType,
+        tableNo: restaurant.enableStaffCode ? (staffCode || 'Unknown') : 'Owner',
+        customerName: 'Cash Customer',
+        items: [{ id: 'pos', name: 'Store Sale', price: Number(amount), quantity: 1 }],
+        totalAmount: Number(amount),
+        status: 'COMPLETED',
+        paymentMethod: 'CASH',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      alert('Cash sale recorded!');
+      setAmount('');
+      reset();
+    } catch (err) {
+      console.error(err);
+      alert('Failed to record sale');
+    }
+    setLoading(false);
+  };
+
+  const handleAddCust = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!custName || !custCode) return;
+    setLoading(true);
+    try {
+      const qCheck = query(collection(db, 'storeCustomers'), where('restaurantId', '==', restaurant.id), where('code', '==', custCode));
+      const snap = await getDocs(qCheck);
+      if (!snap.empty) {
+         alert('Customer code already exists!');
+         setLoading(false);
+         return;
+      }
+      const docRef = await addDoc(collection(db, 'storeCustomers'), {
+        restaurantId: restaurant.id,
+        name: custName,
+        code: custCode,
+        creditBalance: 0,
+        createdAt: serverTimestamp()
+      });
+      alert('Customer added successfully!');
+      if (amount && Number(amount) > 0) {
+        setFoundCust({ id: docRef.id, restaurantId: restaurant.id, name: custName, code: custCode, creditBalance: 0, createdAt: new Date() });
+        setView('CREDIT');
+      } else {
+        reset();
+      }
+    } catch(err) {
+      console.error(err);
+      alert('Failed to add customer');
+    }
+    setLoading(false);
+  };
+
+  const handleVerifyCust = async () => {
+    if(!custCode) return;
+    setLoading(true);
+    try {
+      const qCheck = query(collection(db, 'storeCustomers'), where('restaurantId', '==', restaurant.id), where('code', '==', custCode));
+      const snap = await getDocs(qCheck);
+      if (snap.empty) {
+        alert('Customer not found!');
+        setFoundCust(null);
+      } else {
+        setFoundCust({ id: snap.docs[0].id, ...snap.docs[0].data() } as StoreCustomer);
+      }
+    } catch(err) {
+      console.error(err);
+    }
+    setLoading(false);
+  };
+
+  const handleCreditSale = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!foundCust) return;
+    if (!amount || Number(amount) <= 0) {
+      alert("Please enter a valid amount at the top first!");
+      return;
+    }
+    setLoading(true);
+    try {
+      await addDoc(collection(db, 'orders'), {
+        restaurantId: restaurant.id,
+        businessType: restaurant.businessType,
+        tableNo: restaurant.enableStaffCode ? (staffCode || 'Unknown') : 'Owner',
+        customerName: foundCust.name,
+        storeCustomerCode: foundCust.code,
+        items: [{ id: 'credit', name: 'Credit Sale', price: Number(amount), quantity: 1 }],
+        totalAmount: Number(amount),
+        status: 'COMPLETED',
+        paymentMethod: 'CREDIT',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      await updateDoc(doc(db, 'storeCustomers', foundCust.id), {
+        creditBalance: increment(Number(amount))
+      });
+
+      alert('Udhaari recorded successfully!');
+      setAmount('');
+      reset();
+    } catch (err) {
+      console.error(err);
+      alert('Failed to record udhaari');
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="max-w-md mx-auto space-y-6 pt-6 animate-in fade-in zoom-in-95 duration-200">
+      
+      {/* ALWAYS VISIBLE TOP SECTION - amount & staff */}
+      <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-sm space-y-4">
+         <div>
+           <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest pl-2">Enter Amount (₹)</label>
+           <input 
+             type="number" 
+             value={amount}
+             onChange={e => setAmount(e.target.value)}
+             className="w-full text-5xl font-black bg-neutral-50 border-none rounded-2xl p-4 text-center outline-none focus:ring-4 focus:ring-orange-100 placeholder:text-neutral-200"
+             placeholder="0"
+           />
+         </div>
+         {restaurant.enableStaffCode && (
+           <div>
+             <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest pl-2">Staff Code (Optional)</label>
+             <input 
+               type="text" 
+               value={staffCode}
+               onChange={e => setStaffCode(e.target.value)}
+               className="w-full text-lg font-bold bg-neutral-50 border-none rounded-xl p-3 text-center outline-none focus:ring-4 focus:ring-orange-100"
+               placeholder="e.g. 101"
+             />
+           </div>
+         )}
+      </div>
+
+      {/* ACTION PANES */}
+      {view === 'HOME' && (
+        <div className="grid grid-cols-3 gap-3">
+          <button onClick={() => handleCashSale()} disabled={loading} className="flex flex-col items-center justify-center gap-2 py-6 px-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-3xl transition-colors">
+            <DollarSign className="h-8 w-8 mb-1" />
+            <span className="text-xs font-black uppercase tracking-widest text-center">Cash <br/>Sale</span>
+          </button>
+          <button onClick={() => setView('CREDIT')} className="flex flex-col items-center justify-center gap-2 py-6 px-2 bg-orange-50 hover:bg-orange-100 text-orange-700 rounded-3xl transition-colors">
+            <BookOpen className="h-8 w-8 mb-1" />
+            <span className="text-xs font-black uppercase tracking-widest text-center">Udhaari</span>
+          </button>
+          <button onClick={() => setView('ADD_CUST')} className="flex flex-col items-center justify-center gap-2 py-6 px-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-3xl transition-colors">
+            <UserPlus className="h-8 w-8 mb-1" />
+            <span className="text-xs font-black uppercase tracking-widest text-center">Add<br/>Cust</span>
+          </button>
+        </div>
+      )}
+
+      {/* CREDIT (UDHAARI) PANE */}
+      {view === 'CREDIT' && (
+        <div className="bg-orange-50 p-6 rounded-3xl animate-in fade-in slide-in-from-top-2">
+           <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold text-orange-900">Udhaari (Credit)</h3>
+              <button onClick={reset}><X className="text-orange-900 h-6 w-6 hover:scale-110 transition-transform" /></button>
+           </div>
+           
+           {!foundCust ? (
+             <div className="space-y-3">
+               <input 
+                 autoFocus
+                 type="text" 
+                 value={custCode}
+                 onChange={e => setCustCode(e.target.value.toUpperCase())}
+                 placeholder="Customer Code"
+                 className="w-full text-xl font-bold bg-white rounded-xl p-4 text-center outline-none uppercase font-mono border border-orange-200 focus:border-orange-500"
+               />
+               <button disabled={loading || !custCode} onClick={handleVerifyCust} className="w-full bg-neutral-900 hover:bg-black text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-colors">
+                 {loading ? 'Searching...' : <><Search className="h-5 w-5" /> Verify Customer</>}
+               </button>
+             </div>
+           ) : (
+             <div className="space-y-4">
+                <div className="bg-white rounded-xl p-4 text-center border border-orange-200">
+                   <p className="text-xs font-bold text-orange-500 uppercase tracking-widest mb-1">Customer verified</p>
+                   <p className="text-xl font-black text-neutral-900">{foundCust.name}</p>
+                   <p className="text-sm font-medium text-neutral-500 mt-1">Due: ₹{foundCust.creditBalance}</p>
+                </div>
+                <button disabled={loading} onClick={() => handleCreditSale()} className="w-full bg-orange-600 hover:bg-orange-700 text-white font-black uppercase tracking-wide py-4 rounded-xl transition-colors">
+                  {loading ? 'Processing...' : `Confirm ₹${amount || 0} Udhaari`}
+                </button>
+             </div>
+           )}
+        </div>
+      )}
+
+      {/* ADD CUSTOMER PANE */}
+      {view === 'ADD_CUST' && (
+        <div className="bg-blue-50 p-6 rounded-3xl animate-in fade-in slide-in-from-top-2">
+           <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold text-blue-900">New Customer</h3>
+              <button onClick={reset}><X className="text-blue-900 h-6 w-6 hover:scale-110 transition-transform" /></button>
+           </div>
+           
+           <div className="space-y-3">
+             <input 
+               autoFocus
+               type="text" 
+               value={custName}
+               onChange={e => setCustName(e.target.value)}
+               placeholder="Customer Name"
+               className="w-full text-lg font-bold bg-white rounded-xl p-4 outline-none border border-blue-200 focus:border-blue-500"
+             />
+             <input 
+               type="text" 
+               value={custCode}
+               onChange={e => setCustCode(e.target.value.toUpperCase())}
+               placeholder="Unique Code (e.g. CODE-1)"
+               className="w-full text-lg font-bold bg-white rounded-xl p-4 outline-none uppercase font-mono border border-blue-200 focus:border-blue-500"
+             />
+             <button disabled={loading || !custName || !custCode} onClick={() => handleAddCust()} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl flex items-center justify-center transition-colors">
+               {loading ? 'Saving...' : 'Add Customer'}
+             </button>
+           </div>
+        </div>
+      )}
+      
+    </div>
+  );
+}
+
+function StoreCustomersTab({ restaurant }: { restaurant: Restaurant }) {
+  const [customers, setCustomers] = useState<StoreCustomer[]>([]);
+  const [selectedCust, setSelectedCust] = useState<StoreCustomer | null>(null);
+  const [custOrders, setCustOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const q = query(collection(db, 'storeCustomers'), where('restaurantId', '==', restaurant.id));
+    const unsub = onSnapshot(q, (snap) => {
+      const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as StoreCustomer));
+      setCustomers(data.sort((a,b) => {
+        const da = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
+        const dbTime = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
+        return dbTime - da;
+      }));
+      setLoading(false);
+    });
+    return unsub;
+  }, [restaurant.id]);
+
+  useEffect(() => {
+    if (!selectedCust) return;
+    setLoading(true);
+    // Query ALL orders for this restaurant, then filter locally to avoid composite index requirement
+    const q = query(
+      collection(db, 'orders'),
+      where('restaurantId', '==', restaurant.id)
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      const data = snap.docs
+        .map(d => ({ id: d.id, ...d.data() } as Order))
+        .filter(d => d.storeCustomerCode === selectedCust.code);
+        
+      setCustOrders(data.sort((a,b) => {
+        const da = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
+        const dbTime = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
+        return dbTime - da;
+      }));
+      setLoading(false);
+    });
+    return unsub;
+  }, [selectedCust, restaurant.id]);
+
+  if (selectedCust) {
+    return (
+      <div className="space-y-6 animate-in slide-in-from-right-4">
+        <div className="flex items-center justify-between bg-white p-4 rounded-3xl border border-neutral-100 shadow-sm">
+           <div className="flex items-center gap-3">
+             <button onClick={() => setSelectedCust(null)} className="p-2 hover:bg-neutral-100 rounded-full text-neutral-500">
+               <ChevronRight className="h-6 w-6 rotate-180" />
+             </button>
+             <div>
+               <h2 className="text-xl font-bold text-neutral-900">{selectedCust.name} <span className="text-sm font-mono text-neutral-400 font-normal">({selectedCust.code})</span></h2>
+               <p className="text-sm text-neutral-500 font-medium">Total Balance: ₹{selectedCust.creditBalance}</p>
+             </div>
+           </div>
+        </div>
+
+        <div className="bg-white rounded-3xl border border-neutral-100 p-6 shadow-sm">
+           <h3 className="font-bold text-neutral-900 mb-4">Credit History</h3>
+           {loading ? (
+             <p className="text-sm text-neutral-500">Loading...</p>
+           ) : custOrders.length === 0 ? (
+             <p className="text-sm text-neutral-500">No credit history found.</p>
+           ) : (
+             <div className="space-y-3">
+               {custOrders.map(order => (
+                 <div key={order.id} className="flex justify-between items-center p-4 bg-white border border-neutral-100 shadow-sm rounded-2xl">
+                   <div>
+                     <div className="flex items-center gap-2 mb-1">
+                       <span className="bg-orange-100 text-orange-700 text-[10px] uppercase font-black tracking-widest px-2 py-0.5 rounded-sm">
+                         Udhaari
+                       </span>
+                       <p className="font-black text-xl text-neutral-900 flex items-center">
+                         <span className="text-sm font-bold text-neutral-400 mr-1">₹</span>{order.totalAmount}
+                       </p>
+                     </div>
+                     <p className="text-xs font-bold text-neutral-500 flex items-center gap-1.5">
+                       <Clock className="h-3.5 w-3.5" />
+                       {order.createdAt?.toDate ? format(order.createdAt.toDate(), 'eee, MMM dd • h:mm a') : 'Just now'}
+                     </p>
+                   </div>
+                   {order.tableNo && order.tableNo !== 'Unknown' && (
+                     <div className="bg-neutral-50 border border-neutral-200 px-3 py-1.5 rounded-lg flex flex-col items-end">
+                       <span className="text-[9px] uppercase font-black tracking-widest text-neutral-400">Staff Code</span>
+                       <span className="text-sm font-bold text-neutral-700">{order.tableNo}</span>
+                     </div>
+                   )}
+                 </div>
+               ))}
+             </div>
+           )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-sm flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-bold text-neutral-900 flex items-center gap-2">
+            <BookOpen className="text-blue-500" /> Udhaari Book
+          </h2>
+          <p className="text-sm text-neutral-500 mt-1">View and manage customer credit</p>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-3xl border border-neutral-100 p-2 shadow-sm">
+        {loading ? (
+          <p className="p-4 text-sm text-neutral-500">Loading customers...</p>
+        ) : customers.length === 0 ? (
+          <p className="p-4 text-sm text-neutral-500">No customers found.</p>
+        ) : (
+          <div className="divide-y divide-neutral-100">
+            {customers.map(cust => (
+              <button 
+                key={cust.id} 
+                onClick={() => setSelectedCust(cust)}
+                className="w-full flex items-center justify-between p-4 hover:bg-neutral-50 transition-colors first:rounded-t-2xl last:rounded-b-2xl"
+              >
+                <div className="text-left">
+                  <p className="font-bold text-neutral-900">{cust.name}</p>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 mt-1">{cust.code}</p>
+                </div>
+                <div className="text-right flex items-center gap-3">
+                  <div className="text-right">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-orange-500 mb-1">Due</p>
+                    <p className="font-bold text-orange-600">₹{cust.creditBalance}</p>
+                  </div>
+                  <ChevronRight className="h-5 w-5 text-neutral-300" />
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function OwnerDashboard() {
-  const [activeTab, setActiveTab] = useState<'home' | 'orders' | 'menu' | 'qr' | 'settings' | 'analytics' | 'staff'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'orders' | 'menu' | 'qr' | 'settings' | 'analytics' | 'staff' | 'customers'>('home');
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [allRestaurants, setAllRestaurants] = useState<Restaurant[]>([]);
   const [loading, setLoading] = useState(true);
@@ -201,6 +604,13 @@ export default function OwnerDashboard() {
                   label={restaurant.businessType === 'Clinic' ? 'Services' : 'Services'}
                 />
               </>
+            ) : restaurant.businessType === 'General Store' ? (
+              <NavBtn 
+                active={activeTab === 'customers'} 
+                onClick={() => setActiveTab('customers')}
+                icon={<BookOpen className="h-5 w-5" />}
+                label="Udhaari Book"
+              />
             ) : (
               <>
                 <NavBtn 
@@ -269,13 +679,19 @@ export default function OwnerDashboard() {
             {activeTab === 'qr' && 'QR'}
             {activeTab === 'analytics' && 'Analytics'}
             {activeTab === 'settings' && 'Settings'}
+            {activeTab === 'customers' && 'Udhaari Book'}
           </h2>
         </header>
 
         <div className="mx-auto max-w-5xl">
-          {activeTab === 'home' && <HomeTab restaurant={restaurant} setActiveTab={setActiveTab} isStaff={isStaff} />}
-          {activeTab === 'orders' && <OrdersTab restaurantId={restaurant.id} businessType={restaurant.businessType} />}
-          {activeTab === 'menu' && <MenuTab restaurantId={restaurant.id} businessType={restaurant.businessType} />}
+          {activeTab === 'home' && restaurant.businessType === 'General Store' ? <GeneralStorePos restaurant={restaurant} /> : activeTab === 'home' && <HomeTab restaurant={restaurant} setActiveTab={setActiveTab} isStaff={isStaff} />}
+          {activeTab !== 'home' && restaurant.businessType === 'General Store' && (activeTab === 'orders' || activeTab === 'menu') ? null : (
+            <>
+              {activeTab === 'orders' && <OrdersTab restaurantId={restaurant.id} businessType={restaurant.businessType} />}
+              {activeTab === 'menu' && <MenuTab restaurantId={restaurant.id} businessType={restaurant.businessType} />}
+            </>
+          )}
+          {activeTab === 'customers' && <StoreCustomersTab restaurant={restaurant} />}
           {!isStaff && (
             <>
               {activeTab === 'staff' && <StaffManagementTab restaurant={restaurant} setRestaurant={setRestaurant} />}
@@ -1904,6 +2320,30 @@ function SettingsTab({ onLogout, restaurant, setRestaurant, setActiveTab, isStaf
               </button>
             </div>
           </div>
+
+          {restaurant.businessType === 'General Store' && (
+            <div className="mb-6 flex items-center justify-between p-4 border border-neutral-100 bg-neutral-50 rounded-2xl">
+               <div>
+                  <h4 className="font-bold text-neutral-900">Enable Staff Code</h4>
+                  <p className="text-sm text-neutral-500">Ask for staff code during cash/udhaari entries</p>
+               </div>
+               <button
+                 disabled={updating}
+                 onClick={async () => {
+                   const newVal = !restaurant.enableStaffCode;
+                   setUpdating(true);
+                   try {
+                     await updateDoc(doc(db, 'restaurants', restaurant.id), { enableStaffCode: newVal });
+                     setRestaurant({ ...restaurant, enableStaffCode: newVal });
+                   } catch(e) { console.error(e); }
+                   setUpdating(false);
+                 }}
+                 className={`w-12 h-6 flex items-center rounded-full transition-colors relative outline-none ${restaurant.enableStaffCode ? 'bg-orange-600' : 'bg-neutral-300'}`}
+               >
+                 <div className="w-5 h-5 bg-white rounded-full absolute transition-all" style={{ left: restaurant.enableStaffCode ? '26px' : '2px'}} />
+               </button>
+            </div>
+          )}
 
             <div className="border-t border-neutral-100 pt-6">
               {showDeleteConfirm ? (

@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendEmailVerification, signOut } from 'firebase/auth';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 import { motion } from 'motion/react';
-import { UtensilsCrossed, ArrowRight, UserCircle2, Mail, Lock, Sparkles } from 'lucide-react';
+import { UtensilsCrossed, ArrowRight, UserCircle2, Mail, Lock, Sparkles, RefreshCcw } from 'lucide-react';
 
 export default function Home() {
   const [loading, setLoading] = useState(true);
-  const [mode, setMode] = useState<'welcome' | 'login' | 'signup'>('welcome');
+  const [mode, setMode] = useState<'welcome' | 'login' | 'signup' | 'verify'>('welcome');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const navigate = useNavigate();
@@ -16,6 +16,13 @@ export default function Home() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       if (u) {
+        await u.reload();
+        if (!u.emailVerified && u.providerData.some((p) => p.providerId === 'password')) {
+          setMode('verify');
+          setLoading(false);
+          return;
+        }
+
         let q = query(collection(db, 'restaurants'), where('ownerId', '==', u.uid));
         let snapshot = await getDocs(q);
         
@@ -29,6 +36,8 @@ export default function Home() {
         } else {
           navigate('/dashboard');
         }
+      } else {
+        setMode('welcome');
       }
       setLoading(false);
     });
@@ -49,9 +58,12 @@ export default function Home() {
        alert("Please enter both email and password.");
        return;
      }
+     setLoading(true);
      try {
        if (mode === 'signup') {
-         await createUserWithEmailAndPassword(auth, email, password);
+         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+         await sendEmailVerification(userCredential.user);
+         alert("Verification email sent! Please check your inbox.");
        } else {
          await signInWithEmailAndPassword(auth, email, password);
        }
@@ -65,7 +77,38 @@ export default function Home() {
        } else {
          alert(error.message || "Failed. Please check your credentials.");
        }
+       setLoading(false);
      }
+  };
+
+  const handleResendVerification = async () => {
+    if (auth.currentUser) {
+      try {
+        await sendEmailVerification(auth.currentUser);
+        alert("Verification email resent!");
+      } catch (error: any) {
+        alert(error.message || "Failed to resend. Try again later.");
+      }
+    }
+  };
+
+  const handleCheckVerification = async () => {
+    if (auth.currentUser) {
+      setLoading(true);
+      await auth.currentUser.reload();
+      if (auth.currentUser.emailVerified) {
+        // Will be handled by next re-eval or we can force reload
+        window.location.reload();
+      } else {
+        alert("Email is not verified yet. Please check your inbox or spam folder.");
+        setLoading(false);
+      }
+    }
+  };
+
+  const handleLogout = async () => {
+    await signOut(auth);
+    setMode('welcome');
   };
 
   if (loading) return (
@@ -115,6 +158,28 @@ export default function Home() {
                 </div>
                 <button onClick={handleEmailAuth} className="w-full bg-orange-600 text-white font-bold py-3 rounded-xl">{mode === 'login' ? 'Login' : 'Sign Up'}</button>
                 <button onClick={() => setMode('welcome')} className="w-full text-neutral-500 text-sm">Back</button>
+            </div>
+        )}
+
+        {mode === 'verify' && (
+            <div className="text-center space-y-6">
+                <h2 className="text-2xl font-bold text-neutral-900">Verify your email</h2>
+                <p className="text-neutral-500 text-sm">
+                   We've sent a verification link to <strong>{auth.currentUser?.email}</strong>. 
+                   Please verify your email to continue.
+                </p>
+                <div className="flex flex-col gap-3 mt-4">
+                  <button onClick={handleCheckVerification} className="w-full bg-orange-600 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2">
+                    <RefreshCcw className="h-5 w-5" />
+                    I've verified my email
+                  </button>
+                  <button onClick={handleResendVerification} className="w-full bg-orange-100 text-orange-700 font-bold py-4 rounded-2xl">
+                    Resend Link
+                  </button>
+                  <button onClick={handleLogout} className="w-full text-neutral-500 font-semibold py-2">
+                    Logout
+                  </button>
+                </div>
             </div>
         )}
       </motion.div>

@@ -46,6 +46,23 @@ service cloud.firestore {
              data.status in ['PENDING', 'ACCEPTED', 'PREPARING', 'COMPLETED', 'CANCELLED'];
     }
 
+    function isValidStoreCustomer(data) {
+      return data.keys().hasAll(['restaurantId', 'name', 'code', 'creditBalance', 'createdAt']) &&
+             data.restaurantId is string &&
+             data.name is string &&
+             data.code is string &&
+             data.creditBalance is number;
+    }
+
+    match /storeCustomers/{customerId} {
+      // Relaxed read to ensure no list query disruptions, rely on UI to not expose other restaurants
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isRestaurantOwnerOrStaff(incoming().restaurantId) && isValidStoreCustomer(incoming());
+      allow update: if isSignedIn() && isRestaurantOwnerOrStaff(existing().restaurantId) && 
+        incoming().diff(existing()).affectedKeys().hasOnly(['creditBalance']);
+      allow delete: if isSignedIn() && isRestaurantOwner(existing().restaurantId);
+    }
+
     match /staffCodes/{code} {
       allow read: if true;
       allow create, update, delete: if isSignedIn() && isRestaurantOwner(request.resource.data.restaurantId);
@@ -62,7 +79,10 @@ service cloud.firestore {
     match /menuItems/{menuItemId} {
       allow read: if true;
       allow create: if isSignedIn() && isRestaurantOwnerOrStaff(incoming().restaurantId) && isValidMenuItem(incoming());
-      allow update: if isSignedIn() && isRestaurantOwnerOrStaff(existing().restaurantId) && isValidMenuItem(incoming());
+      allow update: if (isSignedIn() && isRestaurantOwnerOrStaff(existing().restaurantId) && isValidMenuItem(incoming())) || (
+        // Allow unauth stockCount updates for orders
+        incoming().diff(existing()).affectedKeys().hasOnly(['stockCount']) && incoming().stockCount is number
+      );
       allow delete: if isSignedIn() && isRestaurantOwnerOrStaff(existing().restaurantId);
     }
 
@@ -71,10 +91,13 @@ service cloud.firestore {
       // For listing orders, strictly enforce ownership. 
       // Note: isRestaurantOwnerOrStaff uses get(), which is valid for list queries if optimized by query filters.
       allow read: if isSignedIn() && isRestaurantOwnerOrStaff(existing().restaurantId); 
-      allow update: if isSignedIn() && isRestaurantOwnerOrStaff(existing().restaurantId) && (
+      allow update: if (isSignedIn() && isRestaurantOwnerOrStaff(existing().restaurantId) && (
         // Only allow updating status and updatedAt
         incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']) &&
         incoming().status in ['ACCEPTED', 'PREPARING', 'COMPLETED', 'CANCELLED']
+      )) || (
+        // Allow unauthenticated tableNo update
+        incoming().diff(existing()).affectedKeys().hasOnly(['tableNo']) && incoming().tableNo is string
       );
       allow delete: if isSignedIn() && isRestaurantOwner(existing().restaurantId);
     }

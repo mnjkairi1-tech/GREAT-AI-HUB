@@ -5,5 +5,6 @@ export const BUSINESS_TYPES = [
   "Hotel",
   "Salon",
   "Clinic",
-  "Gym"
+  "Gym",
+  "General Store"
 ];

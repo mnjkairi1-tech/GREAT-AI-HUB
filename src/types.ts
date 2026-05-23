@@ -12,6 +12,7 @@ export interface Restaurant {
   ownerEmail?: string;
   businessType: string;
   description?: string;
+  enableStaffCode?: boolean;
   staffCode?: string;
   staffEmails?: string[];
   staffMembers?: StaffMember[];
@@ -50,6 +51,8 @@ export interface Order {
   tableNo: string;
   customerName: string;
   staffCode?: string;
+  storeCustomerCode?: string;
+  paymentMethod?: string;
   items: OrderItem[];
   totalAmount: number;
   status: OrderStatus;
@@ -67,3 +70,14 @@ export interface QrTable {
   googleMapReviewLink?: string;
   createdAt: any;
 }
+
+export interface StoreCustomer {
+  id: string;
+  restaurantId: string;
+  name: string;
+  code: string;
+  creditBalance: number;
+  phone?: string;
+  createdAt: any;
+}
+

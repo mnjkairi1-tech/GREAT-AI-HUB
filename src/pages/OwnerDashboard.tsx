@@ -14,6 +14,7 @@ import {
 
   deleteDoc,
   orderBy,
+  limit,
   arrayUnion,
   arrayRemove,
   increment
@@ -67,7 +68,9 @@ import {
   Search,
   Calculator,
   Users,
-  Shield
+  Shield,
+  History,
+  RefreshCcw
 } from 'lucide-react';
 import { cn, formatCurrency, handleFirestoreError, OperationType } from '../lib/utils';
 import { MenuItem, Order, Restaurant, OrderStatus, QrTable, StaffMember, StoreCustomer, StaffPermission } from '../types';
@@ -178,6 +181,7 @@ function GeneralStorePos({ restaurant, isStaff }: { restaurant: Restaurant, isSt
         restaurantId: restaurant.id,
         businessType: restaurant.businessType,
         tableNo: restaurant.enableStaffCode ? (staffCode || 'Unknown') : 'Owner',
+        staffCode: restaurant.enableStaffCode ? (staffCode || 'Unknown') : 'Owner',
         customerName: 'Cash Customer',
         items: [{ id: 'pos', name: 'Store Sale', price: finalAmount, quantity: 1 }],
         totalAmount: finalAmount,
@@ -259,6 +263,7 @@ function GeneralStorePos({ restaurant, isStaff }: { restaurant: Restaurant, isSt
         restaurantId: restaurant.id,
         businessType: restaurant.businessType,
         tableNo: restaurant.enableStaffCode ? (staffCode || 'Unknown') : 'Owner',
+        staffCode: restaurant.enableStaffCode ? (staffCode || 'Unknown') : 'Owner',
         customerName: foundCust.name,
         storeCustomerCode: foundCust.code,
         items: [{ id: 'credit', name: 'Credit Sale', price: finalAmount, quantity: 1 }],
@@ -927,7 +932,7 @@ export default function OwnerDashboard() {
           {activeTab === 'qr' && !isStaff && canAccess('qr') && <QRTab restaurantId={restaurant.id} name={restaurant.name} businessType={restaurant.businessType} />}
           {activeTab === 'analytics' && !isStaff && canAccess('analytics') && <AnalyticsTab restaurantId={restaurant.id} businessType={restaurant.businessType} />}
           {activeTab === 'staff_analytics' && canAccess('staff_analytics') && <StaffPerformanceAnalytics restaurantId={restaurant.id} staffMembers={restaurant.staffMembers || []} forceStaffView={isStaff} />}
-          {activeTab === 'settings' && canAccess('settings') && <SettingsTab onLogout={handleLogout} restaurant={restaurant} setRestaurant={setRestaurant} setActiveTab={setActiveTab} isStaff={isStaff} />}
+          {activeTab === 'settings' && <SettingsTab onLogout={handleLogout} restaurant={restaurant} setRestaurant={setRestaurant} setActiveTab={setActiveTab} isStaff={isStaff} />}
         </div>
       </main>
     </div>
@@ -1943,7 +1948,6 @@ function StaffPerformanceAnalytics({ restaurantId, staffMembers, forceStaffView 
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // If there is only one staff member, auto-load their analytics
     if (forceStaffView && staffMembers.length === 1) {
       fetchStaffAnalytics(staffMembers[0].code, staffMembers[0].name);
     }
@@ -1957,181 +1961,254 @@ function StaffPerformanceAnalytics({ restaurantId, staffMembers, forceStaffView 
       const q = query(
         collection(db, 'orders'),
         where('restaurantId', '==', restaurantId),
-        where('tableNo', '==', code),
-        where('status', '==', 'COMPLETED')
+        where('status', '==', 'COMPLETED'),
+        orderBy('createdAt', 'desc')
       );
       const snapshot = await getDocs(q);
-      const fetchedOrders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
-      setOrders(fetchedOrders);
+      const fetched = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
+      setOrders(fetched.filter(o => o.staffCode === code || o.tableNo === code));
     } catch (e) {
-      console.error(e);
-      alert('Error fetching analytics');
+      console.warn("Analytics fetch failed, using fallback:", e);
+      try {
+        const qSimple = query(
+          collection(db, 'orders'),
+          where('restaurantId', '==', restaurantId),
+          where('status', '==', 'COMPLETED')
+        );
+        const snapshot = await getDocs(qSimple);
+        const fetched = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
+        const filtered = fetched
+          .filter(o => o.staffCode === code || o.tableNo === code)
+          .sort((a, b) => {
+            const tA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : new Date(a.createdAt || 0).getTime();
+            const tB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : new Date(b.createdAt || 0).getTime();
+            return tB - tA;
+          });
+        setOrders(filtered);
+      } catch (err2) {
+        console.error(err2);
+        alert('Error loading reports');
+      }
     }
     setLoading(false);
   };
 
   const now = new Date();
-  
-  // Calculate periods
   const isSameDay = (d: Date, ref: Date) => d.getDate() === ref.getDate() && d.getMonth() === ref.getMonth() && d.getFullYear() === ref.getFullYear();
   const isYesterday = (d: Date, ref: Date) => {
     const yesterday = new Date(ref);
     yesterday.setDate(yesterday.getDate() - 1);
     return isSameDay(d, yesterday);
   };
-  const getWeekNumber = (d: Date) => { const first = new Date(d.getFullYear(), 0, 1); return Math.ceil((((d.getTime() - first.getTime()) / 86400000) + first.getDay() + 1) / 7); };
+  const getWeekNumber = (d: Date) => {
+    const first = new Date(d.getFullYear(), 0, 1);
+    return Math.ceil((((d.getTime() - first.getTime()) / 86400000) + first.getDay() + 1) / 7);
+  };
   const isSameWeek = (d: Date, ref: Date) => getWeekNumber(d) === getWeekNumber(ref) && d.getFullYear() === ref.getFullYear();
   const isSameMonth = (d: Date, ref: Date) => d.getMonth() === ref.getMonth() && d.getFullYear() === ref.getFullYear();
-  const isSameYear = (d: Date, ref: Date) => d.getFullYear() === ref.getFullYear();
 
-  let todayTotal = 0, yesterdayTotal = 0, weekTotal = 0, monthTotal = 0, yearTotal = 0;
-  let todayCount = 0, yesterdayCount = 0, weekCount = 0, monthCount = 0, yearCount = 0;
-  let servicesCount = 0;
+  let todayTotal = 0, weekTotal = 0, monthTotal = 0;
+  let todayCount = 0, weekCount = 0, monthCount = 0;
 
-  const chartDataMap: Record<string, number> = {};
-  
-  for (let i = 29; i >= 0; i--) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - i);
-      chartDataMap[format(d, 'MMM dd')] = 0;
-  }
+  const monthlyMap: Record<string, { total: number, count: number, date: Date }> = {};
+  const dailyGroups: Record<string, Order[]> = {};
 
   orders.forEach(order => {
     let date: Date;
-    if (order.createdAt?.toDate) {
-      date = order.createdAt.toDate();
-    } else if (order.createdAt?.seconds) {
-      date = new Date(order.createdAt.seconds * 1000);
-    } else {
-      date = new Date(order.createdAt);
-    }
+    if (order.createdAt?.toDate) date = order.createdAt.toDate();
+    else if (order.createdAt?.seconds) date = new Date(order.createdAt.seconds * 1000);
+    else date = new Date(order.createdAt);
     
     const amount = Number(order.totalAmount) || 0;
-    const itemsCount = (order.items || []).reduce((acc, item) => acc + item.quantity, 0);
-    servicesCount += itemsCount;
 
     if (isSameDay(date, now)) { todayTotal += amount; todayCount++; }
-    if (isYesterday(date, now)) { yesterdayTotal += amount; yesterdayCount++; }
     if (isSameWeek(date, now)) { weekTotal += amount; weekCount++; }
     if (isSameMonth(date, now)) { monthTotal += amount; monthCount++; }
-    if (isSameYear(date, now)) { yearTotal += amount; yearCount++; }
     
-    const dayStr = format(date, 'MMM dd');
-    if (chartDataMap[dayStr] !== undefined) {
-      chartDataMap[dayStr] += amount;
+    const monthKey = format(date, 'yyyy-MM');
+    if (!monthlyMap[monthKey]) {
+      monthlyMap[monthKey] = { total: 0, count: 0, date: new Date(date.getFullYear(), date.getMonth(), 1) };
     }
+    monthlyMap[monthKey].total += amount;
+    monthlyMap[monthKey].count++;
+
+    const logKey = format(date, 'yyyy-MM-dd');
+    if (!dailyGroups[logKey]) dailyGroups[logKey] = [];
+    dailyGroups[logKey].push(order);
   });
-  
-  const chartData = Object.keys(chartDataMap).map(key => ({
-    date: key,
-    earnings: chartDataMap[key]
-  }));
+
+  const monthlyHistory = Object.values(monthlyMap).sort((a, b) => b.date.getTime() - a.date.getTime());
+  const dailyHistoryKeys = Object.keys(dailyGroups).sort((a, b) => b.localeCompare(a));
 
   if (!staffMembers || staffMembers.length === 0) {
     return (
       <div className="rounded-3xl border border-neutral-100 bg-white p-6 shadow-sm sm:p-8 mt-6">
-        <h3 className="mb-4 text-lg font-bold text-neutral-900">Staff Performance Analytics</h3>
-        <p className="text-neutral-500 text-sm">Please register staff members in the Staff Management section to view their analytics.</p>
+        <h3 className="mb-4 text-lg font-black text-neutral-900">Performance Tracking</h3>
+        <p className="text-neutral-500 text-xs font-bold uppercase tracking-wider">Please add staff members to see reports.</p>
       </div>
     );
   }
 
   return (
-    <div className="rounded-3xl border border-neutral-100 bg-white p-6 shadow-sm sm:p-8 mt-6">
-      <h3 className="mb-4 text-lg font-bold text-neutral-900">{forceStaffView ? 'My Performance Analytics' : 'Staff Performance Analytics'}</h3>
-      
-      <div className="flex flex-wrap gap-2 mb-6">
-        {!activeCode && forceStaffView && <p className="w-full text-sm text-neutral-500 mb-2">Select your name to see your performance:</p>}
-        {staffMembers.map(staff => (
-          <button
-            key={staff.id}
-            onClick={() => fetchStaffAnalytics(staff.code, staff.name)}
-            disabled={loading}
-            className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${activeCode === staff.code ? 'bg-orange-600 text-white shadow-md' : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'} disabled:opacity-50`}
-          >
-            {staff.name} <span className={activeCode === staff.code ? 'text-orange-200' : 'text-neutral-400'}>#{staff.code}</span>
-          </button>
-        ))}
+    <div className="space-y-6 mt-6">
+      <div className="rounded-3xl border border-neutral-100 bg-white p-6 shadow-sm sm:p-8">
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h3 className="text-xl font-black text-neutral-900">{forceStaffView ? 'My Stats' : 'Employee Stats'}</h3>
+            <p className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em]">Live Performance Data</p>
+          </div>
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-50 text-orange-600">
+             <Calculator className="h-6 w-6" />
+          </div>
+        </div>
+        
+        <div className="flex flex-wrap gap-2 mb-2">
+          {staffMembers.map(staff => (
+            <button
+              key={staff.id}
+              onClick={() => fetchStaffAnalytics(staff.code, staff.name)}
+              disabled={loading}
+              className={`px-4 py-2 rounded-xl text-[10px] font-black transition-all uppercase tracking-widest ${activeCode === staff.code ? 'bg-neutral-900 text-white shadow-xl translate-y-[-2px]' : 'bg-neutral-100 text-neutral-400 hover:bg-neutral-200'} disabled:opacity-50`}
+            >
+              {staff.name}
+            </button>
+          ))}
+        </div>
       </div>
 
       {loading && (
-        <div className="py-8 flex justify-center">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-neutral-200 border-t-orange-600" />
+        <div className="rounded-3xl bg-white border border-neutral-100 p-20 flex flex-col items-center justify-center shadow-sm">
+            <RefreshCcw className="h-10 w-10 animate-spin text-orange-200 mb-4" />
+            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-neutral-300">Syncing History...</p>
         </div>
       )}
 
       {!loading && activeCode && (
-        <div className="space-y-4">
-          <h4 className="font-bold text-neutral-600">Analytics for <span className="text-neutral-900">{activeName}</span> <span className="ml-2 px-2 py-0.5 bg-neutral-100 text-neutral-500 rounded text-xs font-mono">Code: {activeCode}</span></h4>
-          {orders.length === 0 ? (
-             <p className="text-sm font-medium text-neutral-400 p-4 bg-neutral-50 rounded-xl">No completed services found for {activeName}.</p>
-          ) : (
-            <div className="space-y-6">
-              <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-                <div className="rounded-2xl border border-neutral-100 bg-emerald-50/50 p-4">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600">Today</span>
-                  <div className="mt-1 text-2xl font-black text-emerald-700">₹{todayTotal.toLocaleString()}</div>
-                  <div className="text-[10px] font-bold text-emerald-600 mt-1">{todayCount} sales</div>
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-5 duration-700">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+             <div className="md:col-span-3 rounded-[2.5rem] bg-neutral-900 p-8 text-white relative overflow-hidden">
+                <div className="absolute right-[-10%] top-[-20%] opacity-5">
+                   <Users className="h-64 w-64" />
                 </div>
-                <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-amber-500">Yesterday</span>
-                  <div className="mt-1 text-2xl font-black text-amber-700">₹{yesterdayTotal.toLocaleString()}</div>
-                  <div className="text-[10px] font-bold text-amber-500 mt-1">{yesterdayCount} sales</div>
+                <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-6 relative z-10">
+                   <div>
+                      <p className="text-[10px] font-black text-orange-500 uppercase tracking-[0.3em] mb-2">Profile Overview</p>
+                      <h4 className="text-3xl font-black tracking-tight">{activeName}</h4>
+                      <p className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Employee Code: #{activeCode}</p>
+                   </div>
+                   <div className="text-left sm:text-right">
+                      <p className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.3em] mb-1">Total Career Revenue</p>
+                      <p className="text-4xl font-black text-white tracking-tighter">₹{orders.reduce((acc, o) => acc + (Number(o.totalAmount) || 0), 0).toLocaleString()}</p>
+                   </div>
                 </div>
-                <div className="rounded-2xl border border-neutral-100 bg-neutral-50 p-4">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Month</span>
-                  <div className="mt-1 text-2xl font-black text-neutral-900">₹{monthTotal.toLocaleString()}</div>
-                  <div className="text-[10px] font-bold text-neutral-400 mt-1">{monthCount} sales</div>
+             </div>
+
+             <div className="rounded-3xl border border-neutral-100 bg-white p-6 shadow-sm">
+                <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest block mb-4">Today's Goal</span>
+                <p className="text-2xl font-black text-neutral-900">₹{todayTotal.toLocaleString()}</p>
+                <div className="mt-2 h-1 w-full bg-neutral-100 rounded-full overflow-hidden">
+                   <div className="h-full bg-emerald-500" style={{ width: '100%' }} />
                 </div>
-                <div className="rounded-2xl border border-neutral-100 bg-neutral-50 p-4">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Total Services</span>
-                  <div className="mt-1 text-2xl font-black text-neutral-900">{servicesCount}</div>
-                  <div className="text-[10px] font-bold text-neutral-400 mt-1">Life-time</div>
+                <p className="text-[9px] font-bold text-emerald-600 uppercase mt-2 tracking-tighter">{todayCount} Actions Today</p>
+             </div>
+
+             <div className="rounded-3xl border border-neutral-100 bg-white p-6 shadow-sm">
+                <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest block mb-4">Weekly Balance</span>
+                <p className="text-2xl font-black text-neutral-900">₹{weekTotal.toLocaleString()}</p>
+                <div className="mt-2 h-1 w-full bg-neutral-100 rounded-full overflow-hidden">
+                   <div className="h-full bg-blue-500" style={{ width: '100%' }} />
                 </div>
-              </div>
-              
-              <div className="rounded-2xl border border-neutral-100 bg-neutral-50 p-6 min-h-[300px]">
-                <h5 className="font-bold text-sm text-neutral-900 mb-4 uppercase tracking-wider">30-Day Earnings Trend</h5>
-                <div className="h-[250px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E5E5" />
-                      <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#A3A3A3' }} dy={10} minTickGap={20} />
-                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#A3A3A3' }} tickFormatter={(value) => `₹${value}`} dx={-10} />
-                      <RechartsTooltip 
-                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)' }}
-                        itemStyle={{ color: '#059669', fontWeight: 'bold' }}
-                        formatter={(value) => [`₹${value}`, 'Earnings']}
-                      />
-                      <Line type="monotone" dataKey="earnings" stroke="#10B981" strokeWidth={3} dot={false} activeDot={{ r: 6, fill: '#10B981', stroke: '#fff', strokeWidth: 2 }} />
-                    </LineChart>
-                  </ResponsiveContainer>
+                <p className="text-[9px] font-bold text-blue-500 uppercase mt-2 tracking-tighter">{weekCount} Sales this week</p>
+             </div>
+
+             <div className="rounded-3xl border border-neutral-100 bg-white p-6 shadow-sm">
+                <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest block mb-4">Monthly Target</span>
+                <p className="text-2xl font-black text-neutral-900">₹{monthTotal.toLocaleString()}</p>
+                <div className="mt-2 h-1 w-full bg-neutral-100 rounded-full overflow-hidden">
+                   <div className="h-full bg-orange-500" style={{ width: '100%' }} />
                 </div>
-              </div>
-              
-              <div>
-                 <h5 className="font-bold text-sm text-neutral-900 mb-3 uppercase tracking-wider">Recent Transactions</h5>
-                 <div className="max-h-[300px] overflow-y-auto space-y-2 pr-2 scrollbar-thin scrollbar-thumb-neutral-200">
-                   {[...orders].sort((a, b) => {
-                     const dA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : new Date(a.createdAt || 0).getTime();
-                     const dB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : new Date(b.createdAt || 0).getTime();
-                     return dB - dA;
-                   }).slice(0, 50).map(order => {
-                     const d = order.createdAt?.toDate ? order.createdAt.toDate() : new Date(order.createdAt || Date.now());
-                     return (
-                       <div key={order.id} className="flex justify-between items-center bg-neutral-50 border border-neutral-100 px-4 py-3 rounded-xl text-sm">
-                         <div className="flex flex-col">
-                           <span className="font-medium text-neutral-800">{order.customerName || 'Walk-in Customer'}</span>
-                           <span className="text-xs text-neutral-500">{format(d, 'MMM dd, yyyy • h:mm a')}</span>
+                <p className="text-[9px] font-bold text-orange-500 uppercase mt-2 tracking-tighter">{monthCount} Total Actions</p>
+             </div>
+          </div>
+
+          <div className="rounded-[2.5rem] border border-neutral-100 bg-white shadow-sm overflow-hidden">
+             <div className="px-8 py-6 border-b border-neutral-50 bg-neutral-50/30 flex items-center justify-between">
+                <div>
+                   <h5 className="text-sm font-black text-neutral-900 uppercase tracking-tight">Earning Timeline</h5>
+                   <p className="text-[9px] font-bold text-neutral-400 uppercase">Itemized transaction records</p>
+                </div>
+                <History className="h-5 w-5 text-neutral-300" />
+             </div>
+
+             <div className="p-2 space-y-6">
+                {dailyHistoryKeys.length === 0 ? (
+                  <div className="py-20 text-center">
+                     <p className="text-xs font-bold text-neutral-300 uppercase tracking-widest">No activity found</p>
+                  </div>
+                ) : (
+                  dailyHistoryKeys.map(dateKey => {
+                    const dailyOrders = dailyGroups[dateKey];
+                    const dayDate = new Date(dateKey);
+                    const daySum = dailyOrders.reduce((acc, o) => acc + (Number(o.totalAmount) || 0), 0);
+
+                    return (
+                      <div key={dateKey} className="px-4">
+                         <div className="flex items-center justify-between mb-4 px-2">
+                            <div className="flex items-center gap-2">
+                               <div className="h-5 w-5 rounded-lg bg-neutral-900 flex items-center justify-center">
+                                  <div className="h-1.5 w-1.5 rounded-full bg-orange-500" />
+                               </div>
+                               <span className="text-xs font-black text-neutral-900 uppercase">
+                                 {isSameDay(dayDate, now) ? 'Today' : isYesterday(dayDate, now) ? 'Yesterday' : format(dayDate, 'EEE, dd MMM yyyy')}
+                               </span>
+                            </div>
+                            <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Day Total: ₹{daySum.toLocaleString()}</span>
                          </div>
-                         <span className="font-black text-emerald-600">₹{order.totalAmount}</span>
+                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                            {dailyOrders.map(order => {
+                               const t = order.createdAt?.toDate ? order.createdAt.toDate() : new Date(order.createdAt || 0);
+                               return (
+                                 <div key={order.id} className="group flex items-center justify-between bg-neutral-50/50 border border-neutral-100 rounded-2xl px-5 py-4 transition-all hover:bg-white hover:shadow-md hover:border-transparent">
+                                    <div className="space-y-0.5">
+                                       <p className="text-[11px] font-black text-neutral-800 leading-none truncate max-w-[100px]">{order.customerName || 'Walk-in'}</p>
+                                       <p className="text-[9px] font-bold text-neutral-400 uppercase tracking-tighter">{format(t, 'h:mm a')}</p>
+                                    </div>
+                                    <div className="text-right">
+                                       <p className="text-sm font-black text-neutral-900">₹{order.totalAmount}</p>
+                                       <p className="text-[7px] font-black uppercase text-emerald-500 tracking-[0.2em] opacity-60">Success</p>
+                                    </div>
+                                 </div>
+                               );
+                            })}
+                         </div>
+                      </div>
+                    );
+                  })
+                )}
+             </div>
+          </div>
+
+          <div className="rounded-[2.5rem] border border-neutral-100 bg-neutral-50/30 p-8">
+             <h5 className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.3em] mb-8 text-center text-center">Monthly Performance Summary</h5>
+             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {monthlyHistory.map((item, idx) => (
+                  <div key={idx} className="flex items-center justify-between bg-white px-6 py-5 rounded-[2rem] border border-neutral-100 shadow-sm transition-transform hover:scale-[1.02]">
+                    <div className="flex items-center gap-4">
+                       <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-neutral-900 text-white font-black text-xs uppercase shadow-lg">
+                         {format(item.date, 'MMM')}
                        </div>
-                     );
-                   })}
-                 </div>
-              </div>
-            </div>
-          )}
+                       <div>
+                          <p className="text-sm font-black text-neutral-900 tracking-tight">{format(item.date, 'MMMM yyyy')}</p>
+                          <p className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest">{item.count} Transactions</p>
+                       </div>
+                    </div>
+                    <div className="text-right">
+                       <p className="text-lg font-black text-orange-600 tracking-tighter">₹{item.total.toLocaleString()}</p>
+                    </div>
+                  </div>
+                ))}
+             </div>
+          </div>
         </div>
       )}
     </div>
@@ -2601,6 +2678,140 @@ function SalonProductInventory({ restaurant }: { restaurant: Restaurant }) {
 }
 
 // --- TAB: Settings ---
+// --- Component: StaffRecentOrders ---
+function StaffRecentOrders({ restaurantId }: { restaurantId: string }) {
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let unsub: () => void = () => {};
+    
+    const startListening = () => {
+      const q = query(
+        collection(db, 'orders'),
+        where('restaurantId', '==', restaurantId),
+        orderBy('createdAt', 'desc'),
+        limit(20)
+      );
+
+      unsub = onSnapshot(q, (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
+        setOrders(data);
+        setLoading(false);
+        setError(null);
+      }, (err) => {
+        console.warn("Ordered snapshot failed fallback used:", err);
+        const fallbackQuery = query(
+          collection(db, 'orders'),
+          where('restaurantId', '==', restaurantId)
+        );
+        
+        unsub = onSnapshot(fallbackQuery, (snapshot) => {
+          const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order))
+            .sort((a, b) => {
+              const getTime = (val: any) => {
+                if (val?.toDate) return val.toDate().getTime();
+                if (val) {
+                  const d = new Date(val);
+                  return isNaN(d.getTime()) ? 0 : d.getTime();
+                }
+                return 0;
+              };
+              return getTime(b.createdAt) - getTime(a.createdAt);
+            })
+            .slice(0, 20);
+          setOrders(data);
+          setLoading(false);
+          setError(null);
+        }, (fallbackErr) => {
+          setError("Failed to load history");
+          setLoading(false);
+        });
+      });
+    };
+
+    startListening();
+    return () => unsub();
+  }, [restaurantId]);
+
+  if (loading) return (
+    <div className="rounded-3xl border border-neutral-100 bg-white p-6 text-center shadow-sm">
+      <RefreshCcw className="mx-auto h-6 w-6 animate-spin text-orange-400" />
+      <p className="mt-2 text-[10px] uppercase font-black tracking-widest text-neutral-400">Loading History...</p>
+    </div>
+  );
+
+  if (error) return (
+    <div className="rounded-3xl border border-red-100 bg-red-50 p-4 text-center">
+       <p className="text-xs font-bold text-red-600">{error}</p>
+    </div>
+  );
+
+  return (
+    <div className="rounded-3xl border border-neutral-100 bg-white shadow-sm overflow-hidden mb-6">
+      <div className="flex items-center justify-between bg-neutral-50/50 px-5 py-3 border-b border-neutral-100">
+        <div className="flex items-center gap-2">
+           <History className="h-4 w-4 text-neutral-400" />
+           <span className="text-xs font-black text-neutral-900 uppercase tracking-tight">Recent Sales</span>
+        </div>
+        <span className="text-[10px] font-bold text-neutral-400">Showing Last 20</span>
+      </div>
+
+      <div className="divide-y divide-neutral-50">
+        {orders.length === 0 ? (
+          <div className="py-10 text-center">
+             <p className="text-xs font-medium text-neutral-400">No transactions recorded.</p>
+          </div>
+        ) : (
+          orders.map((order) => {
+            let date: Date;
+            try {
+              if (order.createdAt?.toDate) date = order.createdAt.toDate();
+              else if (order.createdAt) date = new Date(order.createdAt);
+              else date = new Date();
+              if (isNaN(date.getTime())) date = new Date();
+            } catch (e) {
+              date = new Date();
+            }
+
+            const staff = order.staffCode || order.tableNo || 'Owner';
+            const isCash = order.paymentMethod === 'CASH';
+
+            return (
+              <div key={order.id} className="flex items-center justify-between px-5 py-3 transition-colors hover:bg-neutral-50/30">
+                <div className="flex items-center gap-3">
+                   <div className={`flex h-8 w-8 items-center justify-center rounded-xl text-[10px] font-black ${isCash ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'}`}>
+                      {isCash ? 'CA' : 'CR'}
+                   </div>
+                   <div className="space-y-0.5">
+                      <p className="text-xs font-bold text-neutral-900 leading-none truncate max-w-[100px]">
+                        {order.customerName || 'Walk-in'}
+                      </p>
+                      <div className="flex items-center gap-1.5 text-[9px] font-black text-neutral-400 uppercase tracking-tighter">
+                         <span>{staff === 'Owner' ? 'OWNER' : `ID: ${staff}`}</span>
+                         <span>•</span>
+                         <span>{date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      </div>
+                   </div>
+                </div>
+                <div className="text-right">
+                   <p className="text-sm font-black text-neutral-900 tracking-tight">
+                     ₹{order.totalAmount?.toLocaleString()}
+                   </p>
+                   <p className={`text-[8px] font-black uppercase tracking-widest ${order.status === 'COMPLETED' ? 'text-emerald-500' : 'text-red-500'}`}>
+                     {order.status}
+                   </p>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
 function SettingsTab({ onLogout, restaurant, setRestaurant, setActiveTab, isStaff }: { onLogout: () => void, restaurant: Restaurant, setRestaurant: React.Dispatch<React.SetStateAction<Restaurant | null>>, setActiveTab: (tab: 'home' | 'orders' | 'menu' | 'qr' | 'settings' | 'analytics' | 'staff' | 'staff_analytics') => void, isStaff: boolean }) {
   const [businessType, setBusinessType] = useState(restaurant.businessType);
   const [updating, setUpdating] = useState(false);
@@ -2667,6 +2878,7 @@ function SettingsTab({ onLogout, restaurant, setRestaurant, setActiveTab, isStaf
 
   return (
     <div className="space-y-8 max-w-2xl">
+      <StaffRecentOrders restaurantId={restaurant.id} />
       {!isStaff && (
         <div className="rounded-3xl border border-neutral-100 bg-white p-6 shadow-sm sm:p-8">
           <button 

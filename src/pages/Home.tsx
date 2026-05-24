@@ -95,6 +95,8 @@ export default function Home() {
          alert("Password is too weak. Please use at least 6 characters.");
        } else if (errorCode === 'auth/invalid-email') {
          alert("Please enter a valid email address.");
+       } else if (errorCode === 'auth/network-request-failed') {
+         alert("Network error. Please check your internet connection and try again.");
        } else {
          alert(error.message || `An error occurred during ${mode}. Please try again.`);
        }

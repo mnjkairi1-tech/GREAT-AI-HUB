@@ -25,6 +25,8 @@ import { format, isToday, isThisMonth } from 'date-fns';
 import {
   BarChart,
   Bar,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -93,6 +95,22 @@ function GeneralStorePos({ restaurant }: { restaurant: Restaurant }) {
   const [custCode, setCustCode] = useState('');
   const [custName, setCustName] = useState('');
   const [foundCust, setFoundCust] = useState<StoreCustomer | null>(null);
+
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const getAmountFontSize = (val: string) => {
+    const len = val.length;
+    if (len <= 6) return 'text-5xl';
+    if (len <= 8) return 'text-4xl';
+    if (len <= 11) return 'text-3xl';
+    if (len <= 15) return 'text-2xl';
+    return 'text-xl';
+  };
 
   const handleNumpadPress = (btn: string) => {
     if (activeInput === 'amount') {
@@ -277,23 +295,23 @@ function GeneralStorePos({ restaurant }: { restaurant: Restaurant }) {
              </button>
            </div>
            <input 
-             type={showCalc ? "text" : "button"}
-             value={amount || (showCalc ? '' : '0')}
-             readOnly={!showCalc}
+             type={isMobile && !showCalc ? "button" : "text"}
+             value={amount || (isMobile && !showCalc ? '0' : '')}
+             readOnly={isMobile && !showCalc}
              onClick={(e) => { 
-                if (!showCalc) {
+                if (isMobile && !showCalc) {
                    setActiveInput('amount');
                    const target = e.currentTarget;
                    setTimeout(() => { target.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 100);
                 }
              }}
              onChange={(e) => { 
-                if (showCalc) {
+                if (!isMobile || showCalc) {
                    const val = e.target.value;
                    if (/^[0-9+\-*/.]*$/.test(val)) setAmount(val);
                 }
              }}
-             className={`w-full text-5xl font-black border-none rounded-2xl p-4 text-center outline-none focus:ring-4 focus:ring-orange-100 placeholder:text-neutral-200 ${!showCalc ? 'cursor-pointer text-neutral-900 bg-neutral-50 active:bg-neutral-100 tracking-tight' : 'bg-neutral-50'}`}
+             className={`w-full ${getAmountFontSize(amount)} font-black border-none rounded-2xl p-4 text-center outline-none focus:ring-4 focus:ring-orange-100 placeholder:text-neutral-200 ${isMobile && !showCalc ? 'cursor-pointer text-neutral-900 bg-neutral-50 active:bg-neutral-100 tracking-tight' : 'bg-neutral-50 text-neutral-900 tracking-tight'} transition-all duration-150`}
              placeholder="0"
            />
            {showCalc && (
@@ -326,12 +344,16 @@ function GeneralStorePos({ restaurant }: { restaurant: Restaurant }) {
            <div>
              <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest pl-2">Staff Code (Optional)</label>
              <input 
-               type="button" 
-               value={staffCode}
+               type={isMobile ? "button" : "text"}
+               value={staffCode || (isMobile ? 'Staff Code (Optional)' : '')}
+               readOnly={isMobile}
+               onChange={(e) => { if (!isMobile) setStaffCode(e.target.value.replace(/[^0-9]/g, '')); }}
                onClick={(e) => {
-                  setActiveInput('staffCode');
-                  const target = e.currentTarget;
-                  setTimeout(() => { target.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 100);
+                  if (isMobile) {
+                     setActiveInput('staffCode');
+                     const target = e.currentTarget;
+                     setTimeout(() => { target.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 100);
+                  }
                }}
                className="w-full text-lg font-bold bg-neutral-50 hover:bg-neutral-100 active:bg-neutral-200 border-none rounded-xl p-3 text-center outline-none focus:ring-4 focus:ring-orange-100 cursor-pointer h-[52px]"
                placeholder="e.g. 101"
@@ -369,12 +391,16 @@ function GeneralStorePos({ restaurant }: { restaurant: Restaurant }) {
            {!foundCust ? (
              <div className="space-y-3">
                <input 
-                 type="button" 
-                 value={custCode || 'Customer Code'}
+                 type={isMobile ? "button" : "text"}
+                 value={custCode || (isMobile ? 'Customer Code' : '')}
+                 readOnly={isMobile}
+                 onChange={(e) => { if (!isMobile) setCustCode(e.target.value.replace(/[^a-zA-Z0-9]/g, '')); }}
                  onClick={(e) => {
-                    setActiveInput('custCode');
-                    const target = e.currentTarget;
-                    setTimeout(() => { target.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 100);
+                    if (isMobile) {
+                       setActiveInput('custCode');
+                       const target = e.currentTarget;
+                       setTimeout(() => { target.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 100);
+                    }
                  }}
                  className={`w-full text-xl font-bold bg-white rounded-xl p-4 text-center outline-none uppercase font-mono border border-orange-200 focus:border-orange-500 cursor-pointer ${!custCode ? 'text-neutral-400' : 'text-neutral-900'} h-[62px]`}
                />
@@ -415,12 +441,16 @@ function GeneralStorePos({ restaurant }: { restaurant: Restaurant }) {
                className="w-full text-lg font-bold bg-white rounded-xl p-4 outline-none border border-blue-200 focus:border-blue-500"
              />
              <input 
-               type="button" 
-               value={custCode || 'Unique Code (e.g. 98765..)'}
+               type={isMobile ? "button" : "text"}
+               value={custCode || (isMobile ? 'Unique Code (e.g. 98765..)' : '')}
+               readOnly={isMobile}
+               onChange={(e) => { if (!isMobile) setCustCode(e.target.value); }}
                onClick={(e) => {
-                  setActiveInput('custCode');
-                  const target = e.currentTarget;
-                  setTimeout(() => { target.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 100);
+                  if (isMobile) {
+                     setActiveInput('custCode');
+                     const target = e.currentTarget;
+                     setTimeout(() => { target.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 100);
+                  }
                }}
                className={`w-full text-lg font-bold bg-white rounded-xl p-4 text-left outline-none uppercase font-mono border border-blue-200 focus:border-blue-500 cursor-pointer ${!custCode ? 'text-neutral-400' : 'text-neutral-900'} h-[62px]`}
              />
@@ -1912,6 +1942,14 @@ function StaffPerformanceAnalytics({ restaurantId, staffMembers }: { restaurantI
   let todayCount = 0, weekCount = 0, monthCount = 0, yearCount = 0;
   let servicesCount = 0;
 
+  const chartDataMap: Record<string, number> = {};
+  
+  for (let i = 29; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      chartDataMap[format(d, 'MMM dd')] = 0;
+  }
+
   orders.forEach(order => {
     const date = order.createdAt?.toDate ? order.createdAt.toDate() : new Date(order.createdAt);
     const amount = order.totalAmount || 0;
@@ -1922,7 +1960,17 @@ function StaffPerformanceAnalytics({ restaurantId, staffMembers }: { restaurantI
     if (isSameWeek(date, now)) { weekTotal += amount; weekCount++; }
     if (isSameMonth(date, now)) { monthTotal += amount; monthCount++; }
     if (isSameYear(date, now)) { yearTotal += amount; yearCount++; }
+    
+    const dayStr = format(date, 'MMM dd');
+    if (chartDataMap[dayStr] !== undefined) {
+      chartDataMap[dayStr] += amount;
+    }
   });
+  
+  const chartData = Object.keys(chartDataMap).map(key => ({
+    date: key,
+    earnings: chartDataMap[key]
+  }));
 
   if (!staffMembers || staffMembers.length === 0) {
     return (
@@ -1983,6 +2031,25 @@ function StaffPerformanceAnalytics({ restaurantId, staffMembers }: { restaurantI
                   <span className="text-xs font-black uppercase tracking-widest text-neutral-400">This Year</span>
                   <div className="mt-1 text-2xl font-bold text-emerald-600">₹{yearTotal.toLocaleString()}</div>
                   <div className="text-sm font-medium text-neutral-500 mt-1">{yearCount} sales</div>
+                </div>
+              </div>
+              
+              <div className="rounded-2xl border border-neutral-100 bg-neutral-50 p-6 min-h-[300px]">
+                <h5 className="font-bold text-sm text-neutral-900 mb-4 uppercase tracking-wider">30-Day Earnings Trend</h5>
+                <div className="h-[250px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E5E5" />
+                      <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#A3A3A3' }} dy={10} minTickGap={20} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#A3A3A3' }} tickFormatter={(value) => `₹${value}`} dx={-10} />
+                      <RechartsTooltip 
+                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)' }}
+                        itemStyle={{ color: '#059669', fontWeight: 'bold' }}
+                        formatter={(value) => [`₹${value}`, 'Earnings']}
+                      />
+                      <Line type="monotone" dataKey="earnings" stroke="#10B981" strokeWidth={3} dot={false} activeDot={{ r: 6, fill: '#10B981', stroke: '#fff', strokeWidth: 2 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
                 </div>
               </div>
               

@@ -1906,6 +1906,7 @@ function StaffPerformanceAnalytics({ restaurantId, staffMembers }: { restaurantI
   const isSameYear = (d: Date, ref: Date) => d.getFullYear() === ref.getFullYear();
 
   let todayTotal = 0, weekTotal = 0, monthTotal = 0, yearTotal = 0;
+  let todayCount = 0, weekCount = 0, monthCount = 0, yearCount = 0;
   let servicesCount = 0;
 
   orders.forEach(order => {
@@ -1914,10 +1915,10 @@ function StaffPerformanceAnalytics({ restaurantId, staffMembers }: { restaurantI
     const itemsCount = (order.items || []).reduce((acc, item) => acc + item.quantity, 0);
     servicesCount += itemsCount;
 
-    if (isSameDay(date, now)) todayTotal += amount;
-    if (isSameWeek(date, now)) weekTotal += amount;
-    if (isSameMonth(date, now)) monthTotal += amount;
-    if (isSameYear(date, now)) yearTotal += amount;
+    if (isSameDay(date, now)) { todayTotal += amount; todayCount++; }
+    if (isSameWeek(date, now)) { weekTotal += amount; weekCount++; }
+    if (isSameMonth(date, now)) { monthTotal += amount; monthCount++; }
+    if (isSameYear(date, now)) { yearTotal += amount; yearCount++; }
   });
 
   if (!staffMembers || staffMembers.length === 0) return null;
@@ -1953,20 +1954,24 @@ function StaffPerformanceAnalytics({ restaurantId, staffMembers }: { restaurantI
           ) : (
             <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
               <div className="rounded-2xl border border-neutral-100 bg-neutral-50 p-4">
-                <span className="text-xs font-black uppercase tracking-widest text-neutral-400">Total Services</span>
-                <div className="mt-1 text-2xl font-bold text-neutral-900">{servicesCount}</div>
-              </div>
-              <div className="rounded-2xl border border-neutral-100 bg-neutral-50 p-4">
                 <span className="text-xs font-black uppercase tracking-widest text-neutral-400">Today</span>
                 <div className="mt-1 text-2xl font-bold text-emerald-600">₹{todayTotal.toLocaleString()}</div>
+                <div className="text-sm font-medium text-neutral-500 mt-1">{todayCount} orders</div>
+              </div>
+              <div className="rounded-2xl border border-neutral-100 bg-neutral-50 p-4">
+                <span className="text-xs font-black uppercase tracking-widest text-neutral-400">This Week</span>
+                <div className="mt-1 text-2xl font-bold text-emerald-600">₹{weekTotal.toLocaleString()}</div>
+                <div className="text-sm font-medium text-neutral-500 mt-1">{weekCount} orders</div>
               </div>
               <div className="rounded-2xl border border-neutral-100 bg-neutral-50 p-4">
                 <span className="text-xs font-black uppercase tracking-widest text-neutral-400">This Month</span>
                 <div className="mt-1 text-2xl font-bold text-emerald-600">₹{monthTotal.toLocaleString()}</div>
+                <div className="text-sm font-medium text-neutral-500 mt-1">{monthCount} orders</div>
               </div>
               <div className="rounded-2xl border border-neutral-100 bg-neutral-50 p-4">
                 <span className="text-xs font-black uppercase tracking-widest text-neutral-400">This Year</span>
                 <div className="mt-1 text-2xl font-bold text-emerald-600">₹{yearTotal.toLocaleString()}</div>
+                <div className="text-sm font-medium text-neutral-500 mt-1">{yearCount} orders</div>
               </div>
             </div>
           )}
@@ -2691,7 +2696,7 @@ function AnalyticsTab({ restaurantId, businessType }: { restaurantId: string, bu
                 <tr>
                   <th className="pb-3 pr-4 font-bold uppercase tracking-wider text-xs whitespace-nowrap">Date</th>
                   <th className="pb-3 pr-4 font-bold uppercase tracking-wider text-xs whitespace-nowrap">Customer</th>
-                  <th className="pb-3 pr-4 font-bold uppercase tracking-wider text-xs whitespace-nowrap">{businessType === 'Salon' ? 'Service/Table' : 'Table/Name'}</th>
+                  <th className="pb-3 pr-4 font-bold uppercase tracking-wider text-xs whitespace-nowrap">{businessType === 'Salon' ? 'Service/Table' : businessType === 'Grocery' ? 'Processed By (Staff)' : 'Table/Name'}</th>
                   <th className="pb-3 text-right font-bold uppercase tracking-wider text-xs whitespace-nowrap">Amount</th>
                 </tr>
               </thead>

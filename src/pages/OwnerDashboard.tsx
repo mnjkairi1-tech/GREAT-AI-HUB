@@ -65,7 +65,8 @@ import {
   UserPlus,
   BookOpen,
   Search,
-  Calculator
+  Calculator,
+  Users
 } from 'lucide-react';
 import { cn, formatCurrency, handleFirestoreError, OperationType } from '../lib/utils';
 import { MenuItem, Order, Restaurant, OrderStatus, QrTable, StaffMember, StoreCustomer } from '../types';
@@ -88,7 +89,7 @@ function GeneralStorePos({ restaurant }: { restaurant: Restaurant }) {
   const [view, setView] = useState<'HOME' | 'CREDIT' | 'ADD_CUST'>('HOME');
   const [loading, setLoading] = useState(false);
   const [showCalc, setShowCalc] = useState(false);
-  const [activeInput, setActiveInput] = useState<'amount' | 'staffCode' | 'custCode' | null>(null);
+  const [activeInput, setActiveInput] = useState<'amount' | 'custCode' | null>(null);
 
   const [amount, setAmount] = useState('');
   const [staffCode, setStaffCode] = useState(localStorage.getItem('gsStaffCode') || '');
@@ -116,9 +117,6 @@ function GeneralStorePos({ restaurant }: { restaurant: Restaurant }) {
     if (activeInput === 'amount') {
       if (btn === '⌫') setAmount(prev => prev.slice(0, -1));
       else setAmount(prev => prev + btn);
-    } else if (activeInput === 'staffCode') {
-      if (btn === '⌫') setStaffCode(prev => prev.slice(0, -1));
-      else if (btn !== '.') setStaffCode(prev => prev + btn);
     } else if (activeInput === 'custCode') {
       if (btn === '⌫') setCustCode(prev => prev.slice(0, -1));
       else if (btn !== '.') setCustCode(prev => prev + btn);
@@ -341,23 +339,29 @@ function GeneralStorePos({ restaurant }: { restaurant: Restaurant }) {
            )}
          </div>
          {restaurant.enableStaffCode && (
-           <div>
-             <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest pl-2">Staff Code (Optional)</label>
-             <input 
-               type={isMobile ? "button" : "text"}
-               value={staffCode || (isMobile ? 'Staff Code (Optional)' : '')}
-               readOnly={isMobile}
-               onChange={(e) => { if (!isMobile) setStaffCode(e.target.value.replace(/[^0-9]/g, '')); }}
-               onClick={(e) => {
-                  if (isMobile) {
-                     setActiveInput('staffCode');
-                     const target = e.currentTarget;
-                     setTimeout(() => { target.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 100);
-                  }
-               }}
-               className="w-full text-lg font-bold bg-neutral-50 hover:bg-neutral-100 active:bg-neutral-200 border-none rounded-xl p-3 text-center outline-none focus:ring-4 focus:ring-orange-100 cursor-pointer h-[52px]"
-               placeholder="e.g. 101"
-             />
+           <div className="space-y-2">
+             <div className="flex items-center justify-between pl-2">
+               <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Staff Identification</label>
+               {staffCode && (
+                 <button onClick={() => setStaffCode('')} className="text-[10px] font-bold text-red-500 uppercase tracking-widest hover:underline">Clear</button>
+               )}
+             </div>
+
+             {/* QUICK STAFF SELECTION */}
+             {restaurant.staffMembers && restaurant.staffMembers.length > 0 && (
+               <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar scroll-smooth">
+                 {restaurant.staffMembers.map(staff => (
+                   <button
+                     key={staff.id}
+                     type="button"
+                     onClick={() => setStaffCode(staff.code)}
+                     className={`flex-shrink-0 px-4 py-2 rounded-xl text-xs font-bold transition-all border ${staffCode === staff.code ? 'bg-orange-600 text-white border-orange-600 shadow-sm scale-105' : 'bg-neutral-50 text-neutral-600 border-neutral-100 hover:border-orange-200 active:scale-95'}`}
+                   >
+                     {staff.name}
+                   </button>
+                 ))}
+               </div>
+             )}
            </div>
          )}
       </div>
@@ -466,7 +470,7 @@ function GeneralStorePos({ restaurant }: { restaurant: Restaurant }) {
           <div className="w-full max-w-md bg-white rounded-t-3xl pt-4 px-4 pb-2">
             <div className="flex justify-between items-center mb-4 px-2">
               <span className="text-xs font-black text-neutral-400 tracking-wider">
-                 {activeInput === 'amount' ? 'ENTER AMOUNT' : activeInput === 'staffCode' ? 'STAFF CODE' : 'CUSTOMER CODE'}
+                 {activeInput === 'amount' ? 'ENTER AMOUNT' : 'CUSTOMER CODE'}
               </span>
               <button onClick={() => setActiveInput(null)} className="text-orange-600 font-bold active:scale-95 text-sm p-2 bg-orange-50 rounded-xl">DONE</button>
             </div>
@@ -1933,13 +1937,18 @@ function StaffPerformanceAnalytics({ restaurantId, staffMembers }: { restaurantI
   
   // Calculate periods
   const isSameDay = (d: Date, ref: Date) => d.getDate() === ref.getDate() && d.getMonth() === ref.getMonth() && d.getFullYear() === ref.getFullYear();
+  const isYesterday = (d: Date, ref: Date) => {
+    const yesterday = new Date(ref);
+    yesterday.setDate(yesterday.getDate() - 1);
+    return isSameDay(d, yesterday);
+  };
   const getWeekNumber = (d: Date) => { const first = new Date(d.getFullYear(), 0, 1); return Math.ceil((((d.getTime() - first.getTime()) / 86400000) + first.getDay() + 1) / 7); };
   const isSameWeek = (d: Date, ref: Date) => getWeekNumber(d) === getWeekNumber(ref) && d.getFullYear() === ref.getFullYear();
   const isSameMonth = (d: Date, ref: Date) => d.getMonth() === ref.getMonth() && d.getFullYear() === ref.getFullYear();
   const isSameYear = (d: Date, ref: Date) => d.getFullYear() === ref.getFullYear();
 
-  let todayTotal = 0, weekTotal = 0, monthTotal = 0, yearTotal = 0;
-  let todayCount = 0, weekCount = 0, monthCount = 0, yearCount = 0;
+  let todayTotal = 0, yesterdayTotal = 0, weekTotal = 0, monthTotal = 0, yearTotal = 0;
+  let todayCount = 0, yesterdayCount = 0, weekCount = 0, monthCount = 0, yearCount = 0;
   let servicesCount = 0;
 
   const chartDataMap: Record<string, number> = {};
@@ -1957,6 +1966,7 @@ function StaffPerformanceAnalytics({ restaurantId, staffMembers }: { restaurantI
     servicesCount += itemsCount;
 
     if (isSameDay(date, now)) { todayTotal += amount; todayCount++; }
+    if (isYesterday(date, now)) { yesterdayTotal += amount; yesterdayCount++; }
     if (isSameWeek(date, now)) { weekTotal += amount; weekCount++; }
     if (isSameMonth(date, now)) { monthTotal += amount; monthCount++; }
     if (isSameYear(date, now)) { yearTotal += amount; yearCount++; }
@@ -1993,7 +2003,7 @@ function StaffPerformanceAnalytics({ restaurantId, staffMembers }: { restaurantI
             disabled={loading}
             className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${activeCode === staff.code ? 'bg-orange-600 text-white shadow-md' : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'} disabled:opacity-50`}
           >
-            {staff.name}
+            {staff.name} <span className={activeCode === staff.code ? 'text-orange-200' : 'text-neutral-400'}>#{staff.code}</span>
           </button>
         ))}
       </div>
@@ -2006,31 +2016,36 @@ function StaffPerformanceAnalytics({ restaurantId, staffMembers }: { restaurantI
 
       {!loading && activeCode && (
         <div className="space-y-4">
-          <h4 className="font-bold text-neutral-600">Analytics for <span className="text-neutral-900">{activeName}</span></h4>
+          <h4 className="font-bold text-neutral-600">Analytics for <span className="text-neutral-900">{activeName}</span> <span className="ml-2 px-2 py-0.5 bg-neutral-100 text-neutral-500 rounded text-xs font-mono">Code: {activeCode}</span></h4>
           {orders.length === 0 ? (
              <p className="text-sm font-medium text-neutral-400 p-4 bg-neutral-50 rounded-xl">No completed services found for {activeName}.</p>
           ) : (
             <div className="space-y-6">
-              <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
                 <div className="rounded-2xl border border-neutral-100 bg-neutral-50 p-4">
                   <span className="text-xs font-black uppercase tracking-widest text-neutral-400">Today</span>
-                  <div className="mt-1 text-2xl font-bold text-emerald-600">₹{todayTotal.toLocaleString()}</div>
-                  <div className="text-sm font-medium text-neutral-500 mt-1">{todayCount} sales</div>
+                  <div className="mt-1 text-xl font-bold text-emerald-600">₹{todayTotal.toLocaleString()}</div>
+                  <div className="text-[10px] font-medium text-neutral-500 mt-1">{todayCount} sales</div>
                 </div>
                 <div className="rounded-2xl border border-neutral-100 bg-neutral-50 p-4">
-                  <span className="text-xs font-black uppercase tracking-widest text-neutral-400">This Week</span>
-                  <div className="mt-1 text-2xl font-bold text-emerald-600">₹{weekTotal.toLocaleString()}</div>
-                  <div className="text-sm font-medium text-neutral-500 mt-1">{weekCount} sales</div>
+                  <span className="text-xs font-black uppercase tracking-widest text-neutral-400">Yesterday</span>
+                  <div className="mt-1 text-xl font-bold text-emerald-600">₹{yesterdayTotal.toLocaleString()}</div>
+                  <div className="text-[10px] font-medium text-neutral-500 mt-1">{yesterdayCount} sales</div>
                 </div>
                 <div className="rounded-2xl border border-neutral-100 bg-neutral-50 p-4">
-                  <span className="text-xs font-black uppercase tracking-widest text-neutral-400">This Month</span>
-                  <div className="mt-1 text-2xl font-bold text-emerald-600">₹{monthTotal.toLocaleString()}</div>
-                  <div className="text-sm font-medium text-neutral-500 mt-1">{monthCount} sales</div>
+                  <span className="text-xs font-black uppercase tracking-widest text-neutral-400">Week</span>
+                  <div className="mt-1 text-xl font-bold text-emerald-600">₹{weekTotal.toLocaleString()}</div>
+                  <div className="text-[10px] font-medium text-neutral-500 mt-1">{weekCount} sales</div>
                 </div>
                 <div className="rounded-2xl border border-neutral-100 bg-neutral-50 p-4">
-                  <span className="text-xs font-black uppercase tracking-widest text-neutral-400">This Year</span>
-                  <div className="mt-1 text-2xl font-bold text-emerald-600">₹{yearTotal.toLocaleString()}</div>
-                  <div className="text-sm font-medium text-neutral-500 mt-1">{yearCount} sales</div>
+                  <span className="text-xs font-black uppercase tracking-widest text-neutral-400">Month</span>
+                  <div className="mt-1 text-xl font-bold text-emerald-600">₹{monthTotal.toLocaleString()}</div>
+                  <div className="text-[10px] font-medium text-neutral-500 mt-1">{monthCount} sales</div>
+                </div>
+                <div className="rounded-2xl border border-neutral-100 bg-neutral-50 p-4">
+                  <span className="text-xs font-black uppercase tracking-widest text-neutral-400">Year</span>
+                  <div className="mt-1 text-xl font-bold text-emerald-600">₹{yearTotal.toLocaleString()}</div>
+                  <div className="text-[10px] font-medium text-neutral-500 mt-1">{yearCount} sales</div>
                 </div>
               </div>
               
@@ -2611,6 +2626,38 @@ function SettingsTab({ onLogout, restaurant, setRestaurant, setActiveTab, isStaf
 
         <div className="rounded-3xl border border-neutral-100 bg-white p-6 shadow-sm sm:p-8">
           <h3 className="mb-4 text-lg font-bold text-neutral-900">Shop Management</h3>
+          
+          <div className="mb-6 flex items-center justify-between rounded-2xl border border-neutral-100 bg-orange-50 p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-100 text-orange-600">
+                <Users className="h-5 w-5" />
+              </div>
+              <div>
+                <h4 className="font-bold text-neutral-900 text-sm">Enable Staff Tracking</h4>
+                <p className="text-[11px] text-neutral-500">Turn this ON to track analytics by staff codes.</p>
+              </div>
+            </div>
+            <button
+              onClick={async () => {
+                const newValue = !restaurant.enableStaffCode;
+                setUpdating(true);
+                try {
+                  await updateDoc(doc(db, 'restaurants', restaurant.id), { enableStaffCode: newValue });
+                  setRestaurant({ ...restaurant, enableStaffCode: newValue });
+                } catch (e) {
+                  handleFirestoreError(e, OperationType.UPDATE, 'restaurants');
+                } finally {
+                  setUpdating(false);
+                }
+              }}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${restaurant.enableStaffCode ? 'bg-orange-600' : 'bg-neutral-300'}`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${restaurant.enableStaffCode ? 'translate-x-6' : 'translate-x-1'}`}
+              />
+            </button>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <button 
               onClick={() => setActiveTab('staff')}
@@ -2628,10 +2675,10 @@ function SettingsTab({ onLogout, restaurant, setRestaurant, setActiveTab, isStaf
             </button>
             <button 
               onClick={() => setActiveTab('staff_analytics')}
-              className="flex items-center gap-3 rounded-xl border border-neutral-200 bg-neutral-50 p-4 font-bold text-neutral-700 transition-all hover:bg-neutral-100 active:scale-95 sm:col-span-2"
+              className={`flex items-center gap-3 rounded-xl border border-neutral-200 p-4 font-bold transition-all active:scale-95 sm:col-span-2 ${restaurant.enableStaffCode ? 'bg-neutral-50 text-neutral-700 hover:bg-neutral-100' : 'bg-neutral-100 text-neutral-400 opacity-60'}`}
             >
-              <BarChart3 className="h-6 w-6 text-orange-600" />
-              Staff Analytics
+              <BarChart3 className={`h-6 w-6 ${restaurant.enableStaffCode ? 'text-orange-600' : 'text-neutral-400'}`} />
+              Staff Analytics {!restaurant.enableStaffCode && <span className="ml-auto text-[10px] uppercase font-black tracking-tighter opacity-50">(Feature Disabled)</span>}
             </button>
           </div>
         </div>

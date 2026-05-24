@@ -1962,26 +1962,50 @@ function StaffPerformanceAnalytics({ restaurantId, staffMembers }: { restaurantI
           {orders.length === 0 ? (
              <p className="text-sm font-medium text-neutral-400 p-4 bg-neutral-50 rounded-xl">No completed services found for {activeName}.</p>
           ) : (
-            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-              <div className="rounded-2xl border border-neutral-100 bg-neutral-50 p-4">
-                <span className="text-xs font-black uppercase tracking-widest text-neutral-400">Today</span>
-                <div className="mt-1 text-2xl font-bold text-emerald-600">₹{todayTotal.toLocaleString()}</div>
-                <div className="text-sm font-medium text-neutral-500 mt-1">{todayCount} orders</div>
+            <div className="space-y-6">
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+                <div className="rounded-2xl border border-neutral-100 bg-neutral-50 p-4">
+                  <span className="text-xs font-black uppercase tracking-widest text-neutral-400">Today</span>
+                  <div className="mt-1 text-2xl font-bold text-emerald-600">₹{todayTotal.toLocaleString()}</div>
+                  <div className="text-sm font-medium text-neutral-500 mt-1">{todayCount} sales</div>
+                </div>
+                <div className="rounded-2xl border border-neutral-100 bg-neutral-50 p-4">
+                  <span className="text-xs font-black uppercase tracking-widest text-neutral-400">This Week</span>
+                  <div className="mt-1 text-2xl font-bold text-emerald-600">₹{weekTotal.toLocaleString()}</div>
+                  <div className="text-sm font-medium text-neutral-500 mt-1">{weekCount} sales</div>
+                </div>
+                <div className="rounded-2xl border border-neutral-100 bg-neutral-50 p-4">
+                  <span className="text-xs font-black uppercase tracking-widest text-neutral-400">This Month</span>
+                  <div className="mt-1 text-2xl font-bold text-emerald-600">₹{monthTotal.toLocaleString()}</div>
+                  <div className="text-sm font-medium text-neutral-500 mt-1">{monthCount} sales</div>
+                </div>
+                <div className="rounded-2xl border border-neutral-100 bg-neutral-50 p-4">
+                  <span className="text-xs font-black uppercase tracking-widest text-neutral-400">This Year</span>
+                  <div className="mt-1 text-2xl font-bold text-emerald-600">₹{yearTotal.toLocaleString()}</div>
+                  <div className="text-sm font-medium text-neutral-500 mt-1">{yearCount} sales</div>
+                </div>
               </div>
-              <div className="rounded-2xl border border-neutral-100 bg-neutral-50 p-4">
-                <span className="text-xs font-black uppercase tracking-widest text-neutral-400">This Week</span>
-                <div className="mt-1 text-2xl font-bold text-emerald-600">₹{weekTotal.toLocaleString()}</div>
-                <div className="text-sm font-medium text-neutral-500 mt-1">{weekCount} orders</div>
-              </div>
-              <div className="rounded-2xl border border-neutral-100 bg-neutral-50 p-4">
-                <span className="text-xs font-black uppercase tracking-widest text-neutral-400">This Month</span>
-                <div className="mt-1 text-2xl font-bold text-emerald-600">₹{monthTotal.toLocaleString()}</div>
-                <div className="text-sm font-medium text-neutral-500 mt-1">{monthCount} orders</div>
-              </div>
-              <div className="rounded-2xl border border-neutral-100 bg-neutral-50 p-4">
-                <span className="text-xs font-black uppercase tracking-widest text-neutral-400">This Year</span>
-                <div className="mt-1 text-2xl font-bold text-emerald-600">₹{yearTotal.toLocaleString()}</div>
-                <div className="text-sm font-medium text-neutral-500 mt-1">{yearCount} orders</div>
+              
+              <div>
+                 <h5 className="font-bold text-sm text-neutral-900 mb-3 uppercase tracking-wider">Recent Transactions</h5>
+                 <div className="max-h-[300px] overflow-y-auto space-y-2 pr-2 scrollbar-thin scrollbar-thumb-neutral-200">
+                   {[...orders].sort((a, b) => {
+                     const dA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : new Date(a.createdAt || 0).getTime();
+                     const dB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : new Date(b.createdAt || 0).getTime();
+                     return dB - dA;
+                   }).slice(0, 50).map(order => {
+                     const d = order.createdAt?.toDate ? order.createdAt.toDate() : new Date(order.createdAt || Date.now());
+                     return (
+                       <div key={order.id} className="flex justify-between items-center bg-neutral-50 border border-neutral-100 px-4 py-3 rounded-xl text-sm">
+                         <div className="flex flex-col">
+                           <span className="font-medium text-neutral-800">{order.customerName || 'Walk-in Customer'}</span>
+                           <span className="text-xs text-neutral-500">{format(d, 'MMM dd, yyyy • h:mm a')}</span>
+                         </div>
+                         <span className="font-black text-emerald-600">₹{order.totalAmount}</span>
+                       </div>
+                     );
+                   })}
+                 </div>
               </div>
             </div>
           )}

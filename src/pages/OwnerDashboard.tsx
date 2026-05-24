@@ -43,6 +43,7 @@ import {
   Trash2,
   LogOut,
   ChevronRight,
+  ChevronDown,
   Pizza,
   Coffee,
   CheckCircle,
@@ -627,7 +628,7 @@ function StoreCustomersTab({ restaurant }: { restaurant: Restaurant }) {
 
 export default function OwnerDashboard() {
   const initialTab = (window.location.hash.replace('#', '') || 'home') as any;
-  const [activeTab, setActiveTabRaw] = useState<'home' | 'orders' | 'menu' | 'qr' | 'settings' | 'analytics' | 'staff' | 'customers'>(initialTab);
+  const [activeTab, setActiveTabRaw] = useState<'home' | 'orders' | 'menu' | 'qr' | 'settings' | 'analytics' | 'staff' | 'customers' | 'staff_analytics'>(initialTab);
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -841,6 +842,7 @@ export default function OwnerDashboard() {
             {activeTab === 'analytics' && 'Analytics'}
             {activeTab === 'settings' && 'Settings'}
             {activeTab === 'customers' && 'Udhaari Book'}
+            {activeTab === 'staff_analytics' && 'Staff Analytics'}
           </h2>
         </header>
 
@@ -858,6 +860,7 @@ export default function OwnerDashboard() {
               {activeTab === 'staff' && <StaffManagementTab restaurant={restaurant} setRestaurant={setRestaurant} />}
               {activeTab === 'qr' && <QRTab restaurantId={restaurant.id} name={restaurant.name} businessType={restaurant.businessType} />}
               {activeTab === 'analytics' && <AnalyticsTab restaurantId={restaurant.id} businessType={restaurant.businessType} />}
+              {activeTab === 'staff_analytics' && <StaffPerformanceAnalytics restaurantId={restaurant.id} staffMembers={restaurant.staffMembers || []} />}
             </>
           )}
           {activeTab === 'settings' && <SettingsTab onLogout={handleLogout} restaurant={restaurant} setRestaurant={setRestaurant} setActiveTab={setActiveTab} isStaff={isStaff} />}
@@ -867,7 +870,7 @@ export default function OwnerDashboard() {
   );
 }
 
-function HomeTab({ restaurant, setActiveTab, isStaff }: { restaurant: Restaurant, setActiveTab: (tab: 'home' | 'orders' | 'menu' | 'qr' | 'settings' | 'analytics' | 'staff') => void, isStaff: boolean }) {
+function HomeTab({ restaurant, setActiveTab, isStaff }: { restaurant: Restaurant, setActiveTab: (tab: 'home' | 'orders' | 'menu' | 'qr' | 'settings' | 'analytics' | 'staff' | 'staff_analytics') => void, isStaff: boolean }) {
   const restaurantId = restaurant.id;
   const businessType = restaurant.businessType;
   const [orders, setOrders] = useState<Order[]>([]);
@@ -1921,7 +1924,14 @@ function StaffPerformanceAnalytics({ restaurantId, staffMembers }: { restaurantI
     if (isSameYear(date, now)) { yearTotal += amount; yearCount++; }
   });
 
-  if (!staffMembers || staffMembers.length === 0) return null;
+  if (!staffMembers || staffMembers.length === 0) {
+    return (
+      <div className="rounded-3xl border border-neutral-100 bg-white p-6 shadow-sm sm:p-8 mt-6">
+        <h3 className="mb-4 text-lg font-bold text-neutral-900">Staff Performance Analytics</h3>
+        <p className="text-neutral-500 text-sm">Please register staff members in the Staff Management section to view their analytics.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-3xl border border-neutral-100 bg-white p-6 shadow-sm sm:p-8 mt-6">
@@ -2228,7 +2238,6 @@ function StaffManagementTab({ restaurant, setRestaurant }: { restaurant: Restaur
         </div>
       </div>
     </div>
-    <StaffPerformanceAnalytics restaurantId={restaurant.id} staffMembers={(restaurant.staffMembers || []).filter(s => restaurant.businessType !== 'Salon' || (s.shop || 'Main Shop') === activeShop)} />
     </div>
   );
 }
@@ -2344,11 +2353,10 @@ function SalonProductInventory({ restaurant }: { restaurant: Restaurant }) {
 }
 
 // --- TAB: Settings ---
-function SettingsTab({ onLogout, restaurant, setRestaurant, setActiveTab, isStaff }: { onLogout: () => void, restaurant: Restaurant, setRestaurant: React.Dispatch<React.SetStateAction<Restaurant | null>>, setActiveTab: (tab: 'home' | 'orders' | 'menu' | 'qr' | 'settings' | 'analytics' | 'staff') => void, isStaff: boolean }) {
+function SettingsTab({ onLogout, restaurant, setRestaurant, setActiveTab, isStaff }: { onLogout: () => void, restaurant: Restaurant, setRestaurant: React.Dispatch<React.SetStateAction<Restaurant | null>>, setActiveTab: (tab: 'home' | 'orders' | 'menu' | 'qr' | 'settings' | 'analytics' | 'staff' | 'staff_analytics') => void, isStaff: boolean }) {
   const [businessType, setBusinessType] = useState(restaurant.businessType);
-  const [staffCode, setStaffCode] = useState(restaurant.staffCode || '');
   const [updating, setUpdating] = useState(false);
-  const [updatingCode, setUpdatingCode] = useState(false);
+  const [showAccountSettings, setShowAccountSettings] = useState(false);
   const navigate = useNavigate();
 
   const handleUpdateType = async (newType: string) => {
@@ -2361,19 +2369,6 @@ function SettingsTab({ onLogout, restaurant, setRestaurant, setActiveTab, isStaf
       handleFirestoreError(e, OperationType.UPDATE, 'restaurants');
     } finally {
       setUpdating(false);
-    }
-  };
-
-  const handleUpdateStaffCode = async () => {
-    setUpdatingCode(true);
-    try {
-      await updateDoc(doc(db, 'restaurants', restaurant.id), { staffCode });
-      await setDoc(doc(db, 'staffCodes', staffCode), { restaurantId: restaurant.id });
-      alert('Staff code updated successfully!');
-    } catch (e) {
-      handleFirestoreError(e, OperationType.UPDATE, 'restaurants');
-    } finally {
-      setUpdatingCode(false);
     }
   };
 
@@ -2426,126 +2421,92 @@ function SettingsTab({ onLogout, restaurant, setRestaurant, setActiveTab, isStaf
     <div className="space-y-8 max-w-2xl">
       {!isStaff && (
         <div className="rounded-3xl border border-neutral-100 bg-white p-6 shadow-sm sm:p-8">
-          <h3 className="mb-4 text-lg font-bold text-neutral-900">Account Settings</h3>
+          <button 
+            onClick={() => setShowAccountSettings(!showAccountSettings)}
+            className="flex w-full items-center justify-between outline-none"
+          >
+            <h3 className="text-lg font-bold text-neutral-900">Account Settings</h3>
+            <ChevronDown className={`h-5 w-5 text-neutral-500 transition-transform ${showAccountSettings ? 'rotate-180' : ''}`} />
+          </button>
           
-          <div className="mb-6">
-            <label className="mb-2 block text-sm font-medium text-neutral-700">Business Name</label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={restaurant.name}
-                onChange={(e) => setRestaurant({...restaurant, name: e.target.value})}
-                className="flex-1 rounded-xl border border-neutral-200 px-4 py-3 outline-none focus:border-orange-500"
-              />
-              <button
-                disabled={updating}
-                onClick={async () => {
-                  setUpdating(true);
-                  try {
-                    await updateDoc(doc(db, 'restaurants', restaurant.id), { name: restaurant.name });
-                  } catch (e) {
-                    handleFirestoreError(e, OperationType.UPDATE, 'restaurants');
-                  }
-                  setUpdating(false);
-                }}
-                className="rounded-xl bg-orange-600 px-4 py-3 font-bold text-white transition-all hover:bg-orange-700 disabled:opacity-50"
-              >
-                Save
-              </button>
-            </div>
-          </div>
+          {showAccountSettings && (
+            <div className="mt-6 space-y-6 pt-6 border-t border-neutral-100">
+              <div className="mb-6">
+                <label className="mb-2 block text-sm font-medium text-neutral-700">Business Name</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={restaurant.name}
+                    onChange={(e) => setRestaurant({...restaurant, name: e.target.value})}
+                    className="flex-1 rounded-xl border border-neutral-200 px-4 py-3 outline-none focus:border-orange-500"
+                  />
+                  <button
+                    disabled={updating}
+                    onClick={async () => {
+                      setUpdating(true);
+                      try {
+                        await updateDoc(doc(db, 'restaurants', restaurant.id), { name: restaurant.name });
+                      } catch (e) {
+                        handleFirestoreError(e, OperationType.UPDATE, 'restaurants');
+                      }
+                      setUpdating(false);
+                    }}
+                    className="rounded-xl bg-orange-600 px-4 py-3 font-bold text-white transition-all hover:bg-orange-700 disabled:opacity-50"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
 
-          <div className="mb-6">
-            <label className="mb-2 block text-sm font-medium text-neutral-700">Business Type</label>
-            <select
-              disabled={updating}
-              value={businessType}
-              onChange={(e) => handleUpdateType(e.target.value)}
-              className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 outline-none transition-all focus:border-orange-500 focus:bg-white focus:ring-2 focus:ring-orange-200"
-            >
-              {BUSINESS_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
-            </select>
-          </div>
+              <div className="mb-6">
+                <label className="mb-2 block text-sm font-medium text-neutral-700">Business Type</label>
+                <select
+                  disabled={updating}
+                  value={businessType}
+                  onChange={(e) => handleUpdateType(e.target.value)}
+                  className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 outline-none transition-all focus:border-orange-500 focus:bg-white focus:ring-2 focus:ring-orange-200"
+                >
+                  {BUSINESS_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
+                </select>
+              </div>
 
-          <div className="mb-6">
-            <label className="mb-2 block text-sm font-medium text-neutral-700">Staff Login Code</label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={staffCode}
-                onChange={(e) => setStaffCode(e.target.value)}
-                className="flex-1 rounded-xl border border-neutral-200 px-4 py-3 outline-none focus:border-orange-500"
-                placeholder="Enter secret code"
-              />
-              <button
-                disabled={updatingCode}
-                onClick={handleUpdateStaffCode}
-                className="rounded-xl bg-orange-600 px-4 py-3 font-bold text-white transition-all hover:bg-orange-700 disabled:opacity-50"
-              >
-                {updatingCode ? '...' : 'Save'}
-              </button>
-            </div>
-          </div>
-
-          {restaurant.businessType === 'General Store' && (
-            <div className="mb-6 flex items-center justify-between p-4 border border-neutral-100 bg-neutral-50 rounded-2xl">
-               <div>
-                  <h4 className="font-bold text-neutral-900">Enable Staff Code</h4>
-                  <p className="text-sm text-neutral-500">Ask for staff code during cash/udhaari entries</p>
-               </div>
-               <button
-                 disabled={updating}
-                 onClick={async () => {
-                   const newVal = !restaurant.enableStaffCode;
-                   setUpdating(true);
-                   try {
-                     await updateDoc(doc(db, 'restaurants', restaurant.id), { enableStaffCode: newVal });
-                     setRestaurant({ ...restaurant, enableStaffCode: newVal });
-                   } catch(e) { console.error(e); }
-                   setUpdating(false);
-                 }}
-                 className={`w-12 h-6 flex items-center rounded-full transition-colors relative outline-none ${restaurant.enableStaffCode ? 'bg-orange-600' : 'bg-neutral-300'}`}
-               >
-                 <div className="w-5 h-5 bg-white rounded-full absolute transition-all" style={{ left: restaurant.enableStaffCode ? '26px' : '2px'}} />
-               </button>
+              <div className="border-t border-neutral-100 pt-6">
+                {showDeleteConfirm ? (
+                  <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+                    <h4 className="mb-2 font-bold text-red-700">Are you absolutely sure?</h4>
+                    <p className="mb-4 text-sm text-red-600">
+                      This will permanently delete your account, business data, menu items, orders, and all other associated data. This action cannot be undone.
+                    </p>
+                    <div className="flex gap-3">
+                      <button
+                        disabled={updating}
+                        onClick={handleDeleteAccount}
+                        className="flex-1 rounded-lg bg-red-600 py-2.5 font-bold text-white transition-all hover:bg-red-700 disabled:opacity-50"
+                      >
+                        {updating ? 'Deleting...' : 'Yes, Delete Everything'}
+                      </button>
+                      <button
+                        disabled={updating}
+                        onClick={() => setShowDeleteConfirm(false)}
+                        className="flex-1 rounded-lg bg-white px-4 py-2.5 font-bold text-neutral-700 border border-neutral-200 transition-all hover:bg-neutral-50 disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                     disabled={updating}
+                     onClick={() => setShowDeleteConfirm(true)}
+                     className="flex items-center gap-2 rounded-xl bg-red-50 px-4 py-3 font-bold text-red-600 transition-all hover:bg-red-100 active:scale-95 disabled:opacity-50"
+                 >
+                     <UserX className="h-5 w-5" />
+                     Delete Account & All Data
+                 </button>
+                )}
+              </div>
             </div>
           )}
-
-            <div className="border-t border-neutral-100 pt-6">
-              {showDeleteConfirm ? (
-                <div className="rounded-xl border border-red-200 bg-red-50 p-4">
-                  <h4 className="mb-2 font-bold text-red-700">Are you absolutely sure?</h4>
-                  <p className="mb-4 text-sm text-red-600">
-                    This will permanently delete your account, business data, menu items, orders, and all other associated data. This action cannot be undone.
-                  </p>
-                  <div className="flex gap-3">
-                    <button
-                      disabled={updating}
-                      onClick={handleDeleteAccount}
-                      className="flex-1 rounded-lg bg-red-600 py-2.5 font-bold text-white transition-all hover:bg-red-700 disabled:opacity-50"
-                    >
-                      {updating ? 'Deleting...' : 'Yes, Delete Everything'}
-                    </button>
-                    <button
-                      disabled={updating}
-                      onClick={() => setShowDeleteConfirm(false)}
-                      className="flex-1 rounded-lg bg-white px-4 py-2.5 font-bold text-neutral-700 border border-neutral-200 transition-all hover:bg-neutral-50 disabled:opacity-50"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                   disabled={updating}
-                   onClick={() => setShowDeleteConfirm(true)}
-                   className="flex items-center gap-2 rounded-xl bg-red-50 px-4 py-3 font-bold text-red-600 transition-all hover:bg-red-100 active:scale-95 disabled:opacity-50"
-               >
-                   <UserX className="h-5 w-5" />
-                   Delete Account & All Data
-               </button>
-              )}
-            </div>
         </div>
       )}
 
@@ -2573,6 +2534,13 @@ function SettingsTab({ onLogout, restaurant, setRestaurant, setActiveTab, isStaf
             >
               <Link className="h-6 w-6 text-orange-600" />
               QR Management
+            </button>
+            <button 
+              onClick={() => setActiveTab('staff_analytics')}
+              className="flex items-center gap-3 rounded-xl border border-neutral-200 bg-neutral-50 p-4 font-bold text-neutral-700 transition-all hover:bg-neutral-100 active:scale-95 sm:col-span-2"
+            >
+              <BarChart3 className="h-6 w-6 text-orange-600" />
+              Staff Analytics
             </button>
           </div>
         </div>
@@ -2696,7 +2664,7 @@ function AnalyticsTab({ restaurantId, businessType }: { restaurantId: string, bu
                 <tr>
                   <th className="pb-3 pr-4 font-bold uppercase tracking-wider text-xs whitespace-nowrap">Date</th>
                   <th className="pb-3 pr-4 font-bold uppercase tracking-wider text-xs whitespace-nowrap">Customer</th>
-                  <th className="pb-3 pr-4 font-bold uppercase tracking-wider text-xs whitespace-nowrap">{businessType === 'Salon' ? 'Service/Table' : businessType === 'Grocery' ? 'Processed By (Staff)' : 'Table/Name'}</th>
+                  <th className="pb-3 pr-4 font-bold uppercase tracking-wider text-xs whitespace-nowrap">{businessType === 'Salon' ? 'Service/Table' : businessType === 'General Store' ? 'Processed By' : 'Table/Name'}</th>
                   <th className="pb-3 text-right font-bold uppercase tracking-wider text-xs whitespace-nowrap">Amount</th>
                 </tr>
               </thead>
@@ -2711,7 +2679,7 @@ function AnalyticsTab({ restaurantId, businessType }: { restaurantId: string, bu
                     <tr key={order.id}>
                       <td className="py-4 pr-4 whitespace-nowrap">{dateInfo ? format(dateInfo, 'MMM dd, h:mm a') : '-'}</td>
                       <td className="py-4 pr-4 font-medium text-neutral-900 whitespace-nowrap">{order.customerName}</td>
-                      <td className="py-4 pr-4 whitespace-nowrap">{businessType === 'Salon' ? `Staff Code ${order.tableNo}` : `Table ${order.tableNo}`}</td>
+                      <td className="py-4 pr-4 whitespace-nowrap">{(businessType === 'Salon' || businessType === 'General Store') ? (!order.tableNo || order.tableNo === 'Unknown' ? 'Owner' : `Code: ${order.tableNo}`) : `Table ${order.tableNo}`}</td>
                       <td className="py-4 text-right font-black text-neutral-900 whitespace-nowrap">{formatCurrency(order.totalAmount)}</td>
                     </tr>
                   )

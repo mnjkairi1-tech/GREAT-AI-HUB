@@ -5,6 +5,11 @@ export interface StaffMember {
   shop?: string;
 }
 
+export interface StaffPermission {
+  email: string;
+  tabs: string[]; // ['home', 'orders', 'menu', 'qr', 'settings', 'analytics', 'staff', 'customers', 'staff_analytics']
+}
+
 export interface Restaurant {
   id: string;
   name: string;
@@ -15,6 +20,7 @@ export interface Restaurant {
   enableStaffCode?: boolean;
   staffCode?: string;
   staffEmails?: string[];
+  staffPermissions?: StaffPermission[];
   staffMembers?: StaffMember[];
   shops?: string[];
   requestAccessEmails?: string[];

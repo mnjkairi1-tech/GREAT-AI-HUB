@@ -77,19 +77,26 @@ export default function Home() {
        if (mode === 'signup') {
          const userCredential = await createUserWithEmailAndPassword(auth, email, password);
          await sendEmailVerification(userCredential.user);
-         alert("Verification email sent! Please check your inbox.");
+         alert("Welcome! We've sent a verification email to " + email + ". Please verify to continue.");
+         setMode('verify');
        } else {
          await signInWithEmailAndPassword(auth, email, password);
        }
      } catch (error: any) {
        console.error(`${mode} failed:`, error);
-       if (error.code === 'auth/email-already-in-use') {
-         alert("This email is already in use. Please login instead.");
+       const errorCode = error.code || '';
+       
+       if (errorCode === 'auth/email-already-in-use') {
+         alert("An account with this email already exists. Switching you to login mode...");
          setMode('login');
-       } else if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found') {
-         alert("Invalid email or password.");
+       } else if (errorCode.includes('auth/invalid-credential') || errorCode.includes('auth/wrong-password') || errorCode.includes('auth/user-not-found')) {
+         alert("Invalid email or password. Please try again.");
+       } else if (errorCode === 'auth/weak-password') {
+         alert("Password is too weak. Please use at least 6 characters.");
+       } else if (errorCode === 'auth/invalid-email') {
+         alert("Please enter a valid email address.");
        } else {
-         alert(error.message || "Failed. Please check your credentials.");
+         alert(error.message || `An error occurred during ${mode}. Please try again.`);
        }
        setLoading(false);
      }
@@ -175,7 +182,14 @@ export default function Home() {
                         <button type="button" onClick={handleForgotPassword} className="text-sm font-bold text-orange-600 hover:text-orange-700">Forgot Password?</button>
                     </div>
                 )}
-                <button onClick={handleEmailAuth} className="w-full bg-orange-600 text-white font-bold py-3 rounded-xl">{mode === 'login' ? 'Login' : 'Sign Up'}</button>
+                <button 
+                    disabled={loading}
+                    onClick={handleEmailAuth} 
+                    className="w-full bg-orange-600 text-white font-bold py-3 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                    {loading && <RefreshCcw className="h-4 w-4 animate-spin" />}
+                    {mode === 'login' ? 'Login' : 'Sign Up'}
+                </button>
                 <button onClick={() => setMode('welcome')} className="w-full text-neutral-500 text-sm">Back</button>
             </div>
         )}

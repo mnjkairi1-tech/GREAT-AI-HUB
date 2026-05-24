@@ -66,10 +66,11 @@ import {
   BookOpen,
   Search,
   Calculator,
-  Users
+  Users,
+  Shield
 } from 'lucide-react';
 import { cn, formatCurrency, handleFirestoreError, OperationType } from '../lib/utils';
-import { MenuItem, Order, Restaurant, OrderStatus, QrTable, StaffMember, StoreCustomer } from '../types';
+import { MenuItem, Order, Restaurant, OrderStatus, QrTable, StaffMember, StoreCustomer, StaffPermission } from '../types';
 import { BUSINESS_TYPES } from '../constants';
 
 const filterByBusinessType = <T extends { businessType?: string, category?: string }>(items: T[], currentType: string): T[] => {
@@ -85,7 +86,7 @@ const filterByBusinessType = <T extends { businessType?: string, category?: stri
   });
 };
 
-function GeneralStorePos({ restaurant }: { restaurant: Restaurant }) {
+function GeneralStorePos({ restaurant, isStaff }: { restaurant: Restaurant, isStaff?: boolean }) {
   const [view, setView] = useState<'HOME' | 'CREDIT' | 'ADD_CUST'>('HOME');
   const [loading, setLoading] = useState(false);
   const [showCalc, setShowCalc] = useState(false);
@@ -683,6 +684,18 @@ export default function OwnerDashboard() {
   const [isStaff, setIsStaff] = useState(false);
   const navigate = useNavigate();
 
+  const canAccess = (tab: string) => {
+    if (!isStaff || !restaurant) return true;
+    const permissions = restaurant.staffPermissions?.find(p => p.email === auth.currentUser?.email);
+    // If no permission object exists for this staff email, allow default core tabs
+    if (!permissions) {
+      const defaults = ['home', 'orders', 'menu'];
+      if (restaurant.businessType === 'General Store') defaults.push('customers');
+      return defaults.includes(tab);
+    }
+    return permissions.tabs.includes(tab);
+  };
+
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, async (user) => {
       
@@ -721,10 +734,11 @@ export default function OwnerDashboard() {
             const first = loadedRestaurants[0];
             setRestaurant(first);
             // Check if user is staff for the first restaurant
-            setIsStaff(!snapOwner.docs.find(d => d.id === first.id));
+            const isActuallyStaff = !snapOwner.docs.find(d => d.id === first.id);
+            setIsStaff(isActuallyStaff);
 
             // Ensure ownerEmail is set if they are the owner
-            if (!setIsStaff && !first.ownerEmail && user.email) {
+            if (!isActuallyStaff && !first.ownerEmail && user.email) {
                await updateDoc(doc(db, 'restaurants', first.id), { ownerEmail: user.email });
             }
           }
@@ -778,78 +792,98 @@ export default function OwnerDashboard() {
           <p className="text-xs text-neutral-400 mt-1">Merchant Dashboard</p>
         </div>
 
-          <nav className="flex w-full justify-around gap-2 lg:flex-col lg:justify-start">
+        <nav className="flex w-full justify-around gap-2 lg:flex-col lg:justify-start">
+          {canAccess('home') && (
             <NavBtn 
               active={activeTab === 'home'} 
               onClick={() => setActiveTab('home')}
               icon={<Home className="h-5 w-5" />}
               label="Home"
             />
-            {restaurant.businessType === 'Salon' || restaurant.businessType === 'Clinic' ? (
-              <>
+          )}
+          {(restaurant.businessType === 'Salon' || restaurant.businessType === 'Clinic') ? (
+            <>
+              {canAccess('orders') && (
                 <NavBtn 
                   active={activeTab === 'orders'} 
                   onClick={() => setActiveTab('orders')}
                   icon={restaurant.businessType === 'Clinic' ? <CheckCircle className="h-5 w-5" /> : <Clock className="h-5 w-5" />}
                   label={restaurant.businessType === 'Clinic' ? 'Appointments' : 'Appointments'}
                 />
+              )}
+              {canAccess('menu') && (
                 <NavBtn 
                   active={activeTab === 'menu'} 
                   onClick={() => setActiveTab('menu')}
                   icon={restaurant.businessType === 'Clinic' ? <LayoutList className="h-5 w-5" /> : <CheckCircle className="h-5 w-5" />}
                   label={restaurant.businessType === 'Clinic' ? 'Services' : 'Services'}
                 />
-              </>
-            ) : restaurant.businessType === 'General Store' ? (
+              )}
+            </>
+          ) : restaurant.businessType === 'General Store' ? (
+            canAccess('customers') && (
               <NavBtn 
                 active={activeTab === 'customers'} 
                 onClick={() => setActiveTab('customers')}
                 icon={<BookOpen className="h-5 w-5" />}
                 label="Udhaari Book"
               />
-            ) : (
-              <>
+            )
+          ) : (
+            <>
+              {canAccess('orders') && (
                 <NavBtn 
                   active={activeTab === 'orders'} 
                   onClick={() => setActiveTab('orders')}
                   icon={<LayoutDashboard className="h-5 w-5" />}
                   label="Orders"
                 />
+              )}
+              {canAccess('menu') && (
                 <NavBtn 
                   active={activeTab === 'menu'} 
                   onClick={() => setActiveTab('menu')}
                   icon={<Pizza className="h-5 w-5" />}
                   label="Menu"
                 />
-              </>
-            )}
-            {!isStaff && (
-              <>
-                {(restaurant.businessType !== 'Salon' && restaurant.businessType !== 'Clinic') && (
-                  <NavBtn 
-                    active={activeTab === 'qr'} 
-                    onClick={() => setActiveTab('qr')}
-                    icon={<Link className="h-5 w-5" />}
-                    label="QR"
-                  />
-                )}
-                <NavBtn 
-                  active={activeTab === 'analytics'} 
-                  onClick={() => setActiveTab('analytics')}
-                  icon={<BarChart3 className="h-5 w-5" />}
-                  label="Analytics"
-                />
-              </>
-            )}
-
+              )}
+            </>
+          )}
+          
+          {canAccess('qr') && (restaurant.businessType !== 'Salon' && restaurant.businessType !== 'Clinic') && !isStaff && (
             <NavBtn 
-              active={activeTab === 'settings'} 
-              onClick={() => setActiveTab('settings')}
-              icon={<Settings className="h-5 w-5" />}
-              label="Settings"
-              isLast
+              active={activeTab === 'qr'} 
+              onClick={() => setActiveTab('qr')}
+              icon={<Link className="h-5 w-5" />}
+              label="QR"
             />
-          </nav>
+          )}
+          {canAccess('analytics') && !isStaff && (
+            <NavBtn 
+              active={activeTab === 'analytics'} 
+              onClick={() => setActiveTab('analytics')}
+              icon={<BarChart3 className="h-5 w-5" />}
+              label="Analytics"
+            />
+          )}
+
+          {isStaff && canAccess('staff_analytics') && (
+            <NavBtn 
+              active={activeTab === 'staff_analytics'} 
+              onClick={() => setActiveTab('staff_analytics')}
+              icon={<BarChart3 className="h-5 w-5" />}
+              label="My Performance"
+            />
+          )}
+
+          <NavBtn 
+            active={activeTab === 'settings'} 
+            onClick={() => setActiveTab('settings')}
+            icon={<Settings className="h-5 w-5" />}
+            label="Settings"
+            isLast
+          />
+        </nav>
       </aside>
 
       {/* Main Content */}
@@ -881,23 +915,19 @@ export default function OwnerDashboard() {
         </header>
 
         <div className="mx-auto max-w-5xl">
-          {activeTab === 'home' && restaurant.businessType === 'General Store' ? <GeneralStorePos restaurant={restaurant} /> : activeTab === 'home' && <HomeTab restaurant={restaurant} setActiveTab={setActiveTab} isStaff={isStaff} />}
+          {activeTab === 'home' && restaurant.businessType === 'General Store' ? <GeneralStorePos restaurant={restaurant} isStaff={isStaff} /> : activeTab === 'home' && <HomeTab restaurant={restaurant} setActiveTab={setActiveTab} isStaff={isStaff} />}
           {activeTab !== 'home' && restaurant.businessType === 'General Store' && (activeTab === 'orders' || activeTab === 'menu') ? null : (
             <>
-              {activeTab === 'orders' && <OrdersTab restaurantId={restaurant.id} businessType={restaurant.businessType} />}
-              {activeTab === 'menu' && <MenuTab restaurantId={restaurant.id} businessType={restaurant.businessType} />}
+              {activeTab === 'orders' && canAccess('orders') && <OrdersTab restaurantId={restaurant.id} businessType={restaurant.businessType} />}
+              {activeTab === 'menu' && canAccess('menu') && <MenuTab restaurantId={restaurant.id} businessType={restaurant.businessType} />}
             </>
           )}
-          {activeTab === 'customers' && <StoreCustomersTab restaurant={restaurant} />}
-          {!isStaff && (
-            <>
-              {activeTab === 'staff' && <StaffManagementTab restaurant={restaurant} setRestaurant={setRestaurant} />}
-              {activeTab === 'qr' && <QRTab restaurantId={restaurant.id} name={restaurant.name} businessType={restaurant.businessType} />}
-              {activeTab === 'analytics' && <AnalyticsTab restaurantId={restaurant.id} businessType={restaurant.businessType} />}
-              {activeTab === 'staff_analytics' && <StaffPerformanceAnalytics restaurantId={restaurant.id} staffMembers={restaurant.staffMembers || []} />}
-            </>
-          )}
-          {activeTab === 'settings' && <SettingsTab onLogout={handleLogout} restaurant={restaurant} setRestaurant={setRestaurant} setActiveTab={setActiveTab} isStaff={isStaff} />}
+          {activeTab === 'customers' && canAccess('customers') && <StoreCustomersTab restaurant={restaurant} />}
+          {activeTab === 'staff' && !isStaff && <StaffManagementTab restaurant={restaurant} setRestaurant={setRestaurant} />}
+          {activeTab === 'qr' && !isStaff && canAccess('qr') && <QRTab restaurantId={restaurant.id} name={restaurant.name} businessType={restaurant.businessType} />}
+          {activeTab === 'analytics' && !isStaff && canAccess('analytics') && <AnalyticsTab restaurantId={restaurant.id} businessType={restaurant.businessType} />}
+          {activeTab === 'staff_analytics' && canAccess('staff_analytics') && <StaffPerformanceAnalytics restaurantId={restaurant.id} staffMembers={restaurant.staffMembers || []} forceStaffView={isStaff} />}
+          {activeTab === 'settings' && canAccess('settings') && <SettingsTab onLogout={handleLogout} restaurant={restaurant} setRestaurant={setRestaurant} setActiveTab={setActiveTab} isStaff={isStaff} />}
         </div>
       </main>
     </div>
@@ -1906,11 +1936,18 @@ function QRCard({ num, url, restaurantName, label, onDelete, onEdit, targetLink,
 }
 
 // --- TAB: Staff Management ---
-function StaffPerformanceAnalytics({ restaurantId, staffMembers }: { restaurantId: string, staffMembers: StaffMember[] }) {
+function StaffPerformanceAnalytics({ restaurantId, staffMembers, forceStaffView }: { restaurantId: string, staffMembers: StaffMember[], forceStaffView?: boolean }) {
   const [activeCode, setActiveCode] = useState('');
   const [activeName, setActiveName] = useState('');
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    // If there is only one staff member, auto-load their analytics
+    if (forceStaffView && staffMembers.length === 1) {
+      fetchStaffAnalytics(staffMembers[0].code, staffMembers[0].name);
+    }
+  }, [forceStaffView, staffMembers]);
 
   const fetchStaffAnalytics = async (code: string, name: string) => {
     setLoading(true);
@@ -1960,8 +1997,16 @@ function StaffPerformanceAnalytics({ restaurantId, staffMembers }: { restaurantI
   }
 
   orders.forEach(order => {
-    const date = order.createdAt?.toDate ? order.createdAt.toDate() : new Date(order.createdAt);
-    const amount = order.totalAmount || 0;
+    let date: Date;
+    if (order.createdAt?.toDate) {
+      date = order.createdAt.toDate();
+    } else if (order.createdAt?.seconds) {
+      date = new Date(order.createdAt.seconds * 1000);
+    } else {
+      date = new Date(order.createdAt);
+    }
+    
+    const amount = Number(order.totalAmount) || 0;
     const itemsCount = (order.items || []).reduce((acc, item) => acc + item.quantity, 0);
     servicesCount += itemsCount;
 
@@ -1993,9 +2038,10 @@ function StaffPerformanceAnalytics({ restaurantId, staffMembers }: { restaurantI
 
   return (
     <div className="rounded-3xl border border-neutral-100 bg-white p-6 shadow-sm sm:p-8 mt-6">
-      <h3 className="mb-4 text-lg font-bold text-neutral-900">Staff Performance Analytics</h3>
+      <h3 className="mb-4 text-lg font-bold text-neutral-900">{forceStaffView ? 'My Performance Analytics' : 'Staff Performance Analytics'}</h3>
       
       <div className="flex flex-wrap gap-2 mb-6">
+        {!activeCode && forceStaffView && <p className="w-full text-sm text-neutral-500 mb-2">Select your name to see your performance:</p>}
         {staffMembers.map(staff => (
           <button
             key={staff.id}
@@ -2021,31 +2067,26 @@ function StaffPerformanceAnalytics({ restaurantId, staffMembers }: { restaurantI
              <p className="text-sm font-medium text-neutral-400 p-4 bg-neutral-50 rounded-xl">No completed services found for {activeName}.</p>
           ) : (
             <div className="space-y-6">
-              <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
-                <div className="rounded-2xl border border-neutral-100 bg-neutral-50 p-4">
-                  <span className="text-xs font-black uppercase tracking-widest text-neutral-400">Today</span>
-                  <div className="mt-1 text-xl font-bold text-emerald-600">₹{todayTotal.toLocaleString()}</div>
-                  <div className="text-[10px] font-medium text-neutral-500 mt-1">{todayCount} sales</div>
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+                <div className="rounded-2xl border border-neutral-100 bg-emerald-50/50 p-4">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600">Today</span>
+                  <div className="mt-1 text-2xl font-black text-emerald-700">₹{todayTotal.toLocaleString()}</div>
+                  <div className="text-[10px] font-bold text-emerald-600 mt-1">{todayCount} sales</div>
+                </div>
+                <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-amber-500">Yesterday</span>
+                  <div className="mt-1 text-2xl font-black text-amber-700">₹{yesterdayTotal.toLocaleString()}</div>
+                  <div className="text-[10px] font-bold text-amber-500 mt-1">{yesterdayCount} sales</div>
                 </div>
                 <div className="rounded-2xl border border-neutral-100 bg-neutral-50 p-4">
-                  <span className="text-xs font-black uppercase tracking-widest text-neutral-400">Yesterday</span>
-                  <div className="mt-1 text-xl font-bold text-emerald-600">₹{yesterdayTotal.toLocaleString()}</div>
-                  <div className="text-[10px] font-medium text-neutral-500 mt-1">{yesterdayCount} sales</div>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Month</span>
+                  <div className="mt-1 text-2xl font-black text-neutral-900">₹{monthTotal.toLocaleString()}</div>
+                  <div className="text-[10px] font-bold text-neutral-400 mt-1">{monthCount} sales</div>
                 </div>
                 <div className="rounded-2xl border border-neutral-100 bg-neutral-50 p-4">
-                  <span className="text-xs font-black uppercase tracking-widest text-neutral-400">Week</span>
-                  <div className="mt-1 text-xl font-bold text-emerald-600">₹{weekTotal.toLocaleString()}</div>
-                  <div className="text-[10px] font-medium text-neutral-500 mt-1">{weekCount} sales</div>
-                </div>
-                <div className="rounded-2xl border border-neutral-100 bg-neutral-50 p-4">
-                  <span className="text-xs font-black uppercase tracking-widest text-neutral-400">Month</span>
-                  <div className="mt-1 text-xl font-bold text-emerald-600">₹{monthTotal.toLocaleString()}</div>
-                  <div className="text-[10px] font-medium text-neutral-500 mt-1">{monthCount} sales</div>
-                </div>
-                <div className="rounded-2xl border border-neutral-100 bg-neutral-50 p-4">
-                  <span className="text-xs font-black uppercase tracking-widest text-neutral-400">Year</span>
-                  <div className="mt-1 text-xl font-bold text-emerald-600">₹{yearTotal.toLocaleString()}</div>
-                  <div className="text-[10px] font-medium text-neutral-500 mt-1">{yearCount} sales</div>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Total Services</span>
+                  <div className="mt-1 text-2xl font-black text-neutral-900">{servicesCount}</div>
+                  <div className="text-[10px] font-bold text-neutral-400 mt-1">Life-time</div>
                 </div>
               </div>
               
@@ -2103,8 +2144,56 @@ function StaffManagementTab({ restaurant, setRestaurant }: { restaurant: Restaur
   const [newEmail, setNewEmail] = useState('');
   const [newShopName, setNewShopName] = useState('');
   const [updating, setUpdating] = useState(false);
+  const [editingPermissionsEmail, setEditingPermissionsEmail] = useState<string | null>(null);
+
   const shops = restaurant.shops && restaurant.shops.length > 0 ? restaurant.shops : ['Main Shop'];
   const [activeShop, setActiveShop] = useState(shops[0]);
+
+  const availableTabs = [
+    { id: 'home', label: restaurant.businessType === 'General Store' ? 'POS Terminal' : 'Home' },
+    { id: 'orders', label: (restaurant.businessType === 'Salon' || restaurant.businessType === 'Clinic') ? 'Appointments' : 'Live Orders' },
+    { id: 'menu', label: (restaurant.businessType === 'Salon' || restaurant.businessType === 'Clinic') ? 'Services' : 'Menu' },
+    { id: 'qr', label: 'QR Codes', ownerOnly: true },
+    { id: 'analytics', label: 'Business Analytics', ownerOnly: true },
+    { id: 'customers', label: 'Udhaari Book' },
+    { id: 'staff_analytics', label: 'Performance Analytics' },
+    { id: 'settings', label: 'Settings' }
+  ].filter(t => {
+    if (restaurant.businessType === 'General Store') return t.id !== 'qr' && t.id !== 'analytics';
+    if (restaurant.businessType === 'Salon' || restaurant.businessType === 'Clinic') return t.id !== 'qr' && t.id !== 'customers';
+    return t.id !== 'customers';
+  });
+
+  const togglePermission = async (email: string, tabId: string) => {
+    const permissions = [...(restaurant.staffPermissions || [])];
+    const existing = permissions.find(p => p.email === email);
+    
+    if (existing) {
+      if (existing.tabs.includes(tabId)) {
+        existing.tabs = existing.tabs.filter(t => t !== tabId);
+      } else {
+        existing.tabs.push(tabId);
+      }
+    } else {
+      permissions.push({ email, tabs: ['home', tabId] }); // Home is usually default
+    }
+
+    setUpdating(true);
+    try {
+      await updateDoc(doc(db, 'restaurants', restaurant.id), {
+        staffPermissions: permissions
+      });
+      setRestaurant({ ...restaurant, staffPermissions: permissions });
+    } catch (e) {
+      handleFirestoreError(e, OperationType.UPDATE, 'restaurants');
+    }
+    setUpdating(false);
+  };
+
+  const getPermissions = (email: string) => {
+    const p = restaurant.staffPermissions?.find(sp => sp.email === email);
+    return p ? p.tabs : ['home', 'orders', 'menu']; // Default fallback
+  };
 
   const handleAddShop = async () => {
     if (!newShopName.trim() || shops.includes(newShopName.trim())) return;
@@ -2311,36 +2400,89 @@ function StaffManagementTab({ restaurant, setRestaurant }: { restaurant: Restaur
       </div>
 
       <div className="space-y-4">
-        <h4 className="font-bold text-sm text-neutral-600">Invite Email Admin</h4>
+        <div className="flex items-center justify-between">
+          <h4 className="font-bold text-sm text-neutral-600">Staff Dashboard Access</h4>
+          <span className="text-[10px] uppercase font-black tracking-widest text-orange-500 bg-orange-50 px-2 py-1 rounded">Control Permissions</span>
+        </div>
         <div className="flex gap-2">
           <input 
               type="email"
               value={newEmail}
               onChange={(e) => setNewEmail(e.target.value)}
               className="flex-1 rounded-xl border border-neutral-200 px-4 py-3 outline-none focus:border-orange-500"
-              placeholder="Staff Email"
+              placeholder="Enter Staff Gmail ID"
           />
           <button 
               disabled={updating}
               onClick={handleAddStaff}
-              className="rounded-xl bg-orange-600 px-4 py-3 font-bold text-white transition-all hover:bg-orange-700 disabled:opacity-50"
+              className="rounded-xl bg-neutral-900 px-4 py-3 font-bold text-white transition-all hover:bg-black active:scale-95 disabled:opacity-50"
           >
-              Add
+              Invite
           </button>
         </div>
-        <div className="space-y-2">
-          {(restaurant.staffEmails || []).map((email, i) => (
-              <div key={i} className="flex justify-between items-center bg-neutral-50 p-3 rounded-xl">
-                  <span>{email}</span>
-                  <button 
-                      disabled={updating}
-                      onClick={() => handleRemoveStaff(email)}
-                      className="text-red-500 font-bold"
+        <div className="space-y-3">
+          {(restaurant.staffEmails || []).map((email, i) => {
+            const userPermissions = getPermissions(email);
+            const isEditing = editingPermissionsEmail === email;
+            
+            return (
+              <div key={i} className="overflow-hidden rounded-2xl border border-neutral-100 bg-neutral-50 transition-all">
+                <div className="flex items-center justify-between p-4 bg-white border-b border-neutral-50">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-100 text-orange-600 font-bold text-xs">
+                      {email.charAt(0).toUpperCase()}
+                    </div>
+                    <span className="font-bold text-neutral-800 text-sm truncate max-w-[150px] sm:max-w-none">{email}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button 
+                      onClick={() => setEditingPermissionsEmail(isEditing ? null : email)}
+                      className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${isEditing ? 'bg-orange-600 text-white' : 'bg-orange-50 text-orange-600 hover:bg-orange-100'}`}
+                    >
+                      <Shield className="h-3.5 w-3.5" />
+                      {isEditing ? 'Close' : 'Permissions'}
+                    </button>
+                    <button 
+                        disabled={updating}
+                        onClick={() => handleRemoveStaff(email)}
+                        className="text-red-400 hover:text-red-500 font-bold active:scale-95 p-1"
+                    >
+                        <Trash2 className="h-5 w-5" />
+                    </button>
+                  </div>
+                </div>
+
+                {isEditing && (
+                  <motion.div 
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    className="p-4 bg-neutral-50"
                   >
-                      Remove
-                  </button>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 mb-3">Accessible Features</p>
+                    <div className="grid grid-cols-2 gap-2">
+                       {availableTabs.map(tab => (
+                         <button
+                           key={tab.id}
+                           onClick={() => togglePermission(email, tab.id)}
+                           className={`flex items-center justify-between rounded-xl border p-3 transition-all ${userPermissions.includes(tab.id) ? 'bg-white border-orange-200 shadow-sm' : 'bg-transparent border-neutral-200 opacity-60'}`}
+                         >
+                           <span className={`text-[11px] font-bold ${userPermissions.includes(tab.id) ? 'text-orange-900' : 'text-neutral-500'}`}>{tab.label}</span>
+                           <div className={`h-4 w-4 rounded-full border flex items-center justify-center ${userPermissions.includes(tab.id) ? 'bg-orange-600 border-orange-600 text-white' : 'border-neutral-300'}`}>
+                             {userPermissions.includes(tab.id) && <Check className="h-3 w-3" />}
+                           </div>
+                         </button>
+                       ))}
+                    </div>
+                    <div className="mt-4 rounded-xl bg-orange-100/50 p-3 border border-orange-100">
+                      <p className="text-[10px] leading-relaxed text-orange-800">
+                        <strong>Security Note:</strong> Staff with access to 'Settings' can manage catalog and basic store info, but sensitive owner-only actions like 'Delete Store' will always be hidden.
+                      </p>
+                    </div>
+                  </motion.div>
+                )}
               </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>

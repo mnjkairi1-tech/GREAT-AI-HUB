@@ -31,10 +31,19 @@ import {
 } from 'lucide-react';
 import { cn, formatCurrency, handleFirestoreError, OperationType } from '../lib/utils';
 import { MenuItem, Restaurant, OrderItem, Order } from '../types';
+import { applyTheme } from '../themes';
 
 export default function CustomerMenu() {
   const { restaurantId, tableNo } = useParams<{ restaurantId: string, tableNo: string }>();
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
+
+  useEffect(() => {
+    if (restaurant?.theme) {
+      applyTheme(restaurant.theme);
+    } else {
+      applyTheme('classic-orange');
+    }
+  }, [restaurant?.theme]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [cart, setCart] = useState<OrderItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -284,8 +293,8 @@ export default function CustomerMenu() {
   };
 
   if (loading && !restaurant) return (
-    <div className="flex h-screen items-center justify-center bg-white">
-      <div className="h-10 w-10 animate-spin rounded-full border-4 border-orange-500 border-t-transparent" />
+    <div className="flex h-screen items-center justify-center bg-brand-bg">
+      <div className="h-10 w-10 animate-spin rounded-full border-4 border-brand-primary border-t-transparent" />
     </div>
   );
 
@@ -296,16 +305,16 @@ export default function CustomerMenu() {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-50 pb-32">
+    <div className="min-h-screen bg-brand-bg text-brand-text pb-32 font-sans">
       {/* Header */}
-      <header className="sticky top-0 z-40 bg-white/80 p-6 backdrop-blur-lg">
+      <header className="sticky top-0 z-40 bg-brand-card/80 p-6 backdrop-blur-lg border-b border-brand-border">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-neutral-900">{restaurant.name}</h1>
-            <p className="text-xs font-semibold text-orange-600">{(restaurant?.businessType === 'Salon' || restaurant?.businessType === 'Clinic') ? 'STAFF CODE' : 'TABLE'} {tableNo}</p>
+            <h1 className="text-xl font-bold tracking-tight">{restaurant.name}</h1>
+            <p className="text-xs font-semibold text-brand-primary">{(restaurant?.businessType === 'Salon' || restaurant?.businessType === 'Clinic') ? 'STAFF CODE' : 'TABLE'} {tableNo}</p>
           </div>
-          <div className="rounded-full bg-neutral-100 p-2">
-            <Utensils className="h-5 w-5 text-neutral-400" />
+          <div className="rounded-full bg-brand-bg p-2 border border-brand-border">
+            <Utensils className="h-5 w-5 opacity-40" />
           </div>
         </div>
         
@@ -316,10 +325,10 @@ export default function CustomerMenu() {
               key={cat}
               onClick={() => setActiveCategory(cat)}
               className={cn(
-                "whitespace-nowrap rounded-full px-5 py-2 text-sm font-bold transition-all",
+                "whitespace-nowrap rounded-full px-5 py-2 text-sm font-black transition-all",
                 activeCategory === cat 
-                  ? "bg-neutral-900 text-white shadow-lg" 
-                  : "bg-white text-neutral-500 border border-neutral-100"
+                  ? "bg-brand-primary text-white shadow-lg" 
+                  : "bg-brand-card text-brand-text/50 border border-brand-border"
               )}
             >
               {cat}
@@ -332,7 +341,7 @@ export default function CustomerMenu() {
              placeholder="Search items..."
              value={searchTerm}
              onChange={(e) => setSearchTerm(e.target.value)}
-             className="w-full rounded-full border border-neutral-100 bg-white px-5 py-3 text-sm outline-none focus:border-orange-500"
+             className="w-full rounded-2xl border border-brand-border bg-brand-card px-5 py-3 text-sm outline-none focus:border-brand-primary"
           />
         </div>
       </header>
@@ -341,7 +350,7 @@ export default function CustomerMenu() {
       <main className="p-6">
         {popularItems.length > 0 && activeCategory === 'All' && (
           <div className="mb-8">
-            <h2 className="mb-4 text-xl font-black text-neutral-900 flex items-center gap-2">🔥 Popular / Trending</h2>
+            <h2 className="mb-4 text-xl font-black text-brand-text flex items-center gap-2">🔥 Popular / Trending</h2>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {popularItems.map(item => (
                 <MenuItemCard key={item.id} item={item} cart={cart} updateCart={updateCart} businessType={restaurant?.businessType} />
@@ -352,7 +361,7 @@ export default function CustomerMenu() {
 
         <div className="mb-4">
            {activeCategory === 'All' && filteredItems.length > 0 && popularItems.length > 0 && (
-              <h2 className="text-xl font-black text-neutral-900 mb-4">All Items</h2>
+              <h2 className="text-xl font-black text-brand-text mb-4">All Items</h2>
            )}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {filteredItems.map(item => (
@@ -378,7 +387,7 @@ export default function CustomerMenu() {
               <div className="flex items-center gap-4">
                 <div className="relative">
                   <ShoppingBag className="h-6 w-6" />
-                  <span className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-orange-500 text-[10px] font-bold">
+                  <span className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-brand-primary text-[10px] font-bold">
                     {totalItems}
                   </span>
                 </div>
@@ -408,30 +417,30 @@ export default function CustomerMenu() {
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
-              className="fixed bottom-0 z-[70] flex w-full flex-col rounded-t-[40px] bg-white p-8 max-h-[90vh] overflow-y-auto"
+              className="fixed bottom-0 z-[70] flex w-full flex-col rounded-t-[40px] bg-brand-card p-8 max-h-[90vh] overflow-y-auto"
             >
               <div className="mb-8 flex items-center justify-between">
-                <h3 className="text-2xl font-black text-neutral-900">Your Basket</h3>
-                <button onClick={() => setIsCheckoutOpen(false)} className="rounded-full bg-neutral-100 p-2"><X className="h-6 w-6" /></button>
+                <h3 className="text-2xl font-black text-brand-text">Your Basket</h3>
+                <button onClick={() => setIsCheckoutOpen(false)} className="rounded-full bg-brand-bg p-2 border border-brand-border"><X className="h-6 w-6" /></button>
               </div>
 
               <div className="space-y-4 mb-8">
                 {cart.map(item => (
                   <div key={item.id} className="flex items-center justify-between">
                     <div>
-                      <span className="font-bold text-neutral-900">{item.name}</span>
+                      <span className="font-bold text-brand-text">{item.name}</span>
                       {(!restaurant || (restaurant.businessType !== 'Salon' && restaurant.businessType !== 'Clinic')) && (
-                        <span className="ml-2 text-xs font-bold text-orange-600">x{item.quantity}</span>
+                        <span className="ml-2 text-xs font-bold text-brand-primary">x{item.quantity}</span>
                       )}
                     </div>
-                    <span className="font-bold text-neutral-900">{formatCurrency(item.price * item.quantity)}</span>
+                    <span className="font-bold text-brand-text">{formatCurrency(item.price * item.quantity)}</span>
                   </div>
                 ))}
               </div>
 
               {suggestedItems.length > 0 && (
-                <div className="mb-8 border-t border-neutral-200 pt-6">
-                  <h4 className="mb-4 text-xs font-black text-neutral-400 uppercase tracking-widest flex items-center gap-2">
+                <div className="mb-8 border-t border-brand-border pt-6">
+                  <h4 className="mb-4 text-[10px] font-black text-brand-text/40 uppercase tracking-widest flex items-center gap-2">
                     <Utensils className="h-4 w-4" /> Frequently Bought Together
                   </h4>
                   <div className="grid grid-cols-1 gap-3">
@@ -442,20 +451,20 @@ export default function CustomerMenu() {
                 </div>
               )}
 
-              <div className="space-y-4 rounded-3xl bg-neutral-50 p-6">
+              <div className="space-y-4 rounded-3xl bg-brand-bg border border-brand-border p-6">
                 <div>
-                  <label className="mb-1 block text-xs font-bold text-neutral-400 uppercase">Your Name</label>
+                  <label className="mb-1 block text-[10px] font-black text-brand-text/40 uppercase tracking-widest">Your Name</label>
                   <input
                     required
                     value={customerName}
                     onChange={e => setCustomerName(e.target.value)}
                     placeholder="Enter your name"
-                    className="w-full bg-transparent text-lg font-bold outline-none"
+                    className="w-full bg-transparent text-lg font-bold outline-none placeholder:text-brand-text/20"
                   />
                 </div>
                 {tableNo === 'PREVIEW' ? (
-                  <div className="border-t border-neutral-200 pt-4">
-                    <label className="mb-1 block text-xs font-bold text-neutral-400 uppercase">
+                  <div className="border-t border-brand-border pt-4">
+                    <label className="mb-1 block text-[10px] font-black text-brand-text/40 uppercase tracking-widest">
                       {(restaurant?.businessType === 'Salon' || restaurant?.businessType === 'Clinic') ? 'Staff Code' : 'Table Number'}
                     </label>
                     <input
@@ -463,27 +472,27 @@ export default function CustomerMenu() {
                       value={checkoutTableNo}
                       onChange={e => setCheckoutTableNo(e.target.value)}
                       placeholder={(restaurant?.businessType === 'Salon' || restaurant?.businessType === 'Clinic') ? 'Enter staff code (e.g. 101)' : 'Enter table number'}
-                      className="w-full bg-transparent text-lg font-bold outline-none"
+                      className="w-full bg-transparent text-lg font-bold outline-none placeholder:text-brand-text/20"
                     />
                   </div>
                 ) : (
-                  <div className="border-t border-neutral-200 pt-4 flex justify-between items-center">
-                    <span className="text-sm font-bold text-neutral-500">
+                  <div className="border-t border-brand-border pt-4 flex justify-between items-center">
+                    <span className="text-xs font-black uppercase tracking-widest text-brand-text/40">
                       {(restaurant?.businessType === 'Salon' || restaurant?.businessType === 'Clinic') ? 'Staff Code' : 'Table Number'}
                     </span>
-                    <span className="rounded-md bg-orange-100 px-2 py-0.5 text-xs font-black text-orange-600 uppercase tracking-widest">{tableNo}</span>
+                    <span className="rounded-md bg-brand-secondary border border-brand-primary/10 px-2 py-0.5 text-xs font-black text-brand-primary uppercase tracking-widest">{tableNo}</span>
                   </div>
                 )}
-                <div className="flex items-center justify-between border-t border-neutral-200 pt-4">
-                  <span className="text-sm font-bold text-neutral-500">Total Payable</span>
-                  <span className="text-2xl font-black text-neutral-900">{formatCurrency(totalAmount)}</span>
+                <div className="flex items-center justify-between border-t border-brand-border pt-4">
+                  <span className="text-sm font-bold opacity-40">Total Payable</span>
+                  <span className="text-2xl font-black">{formatCurrency(totalAmount)}</span>
                 </div>
               </div>
 
               <button
                 disabled={!customerName || !checkoutTableNo || loading}
                 onClick={placeOrder}
-                className="mt-8 flex h-16 w-full items-center justify-center gap-3 rounded-[24px] bg-orange-600 text-lg font-bold text-white shadow-xl shadow-orange-100 hover:bg-orange-700 active:scale-95 disabled:opacity-50"
+                className="mt-8 flex h-16 w-full items-center justify-center gap-3 rounded-[24px] bg-brand-primary text-lg font-bold text-white shadow-xl shadow-brand-primary/20 hover:opacity-90 active:scale-95 disabled:opacity-50"
               >
                 {loading ? 'Processing...' : 'Place Order'} <ArrowRight className="h-6 w-6" />
               </button>
@@ -503,36 +512,36 @@ function MenuItemCard({ item, cart, updateCart, businessType }: { key?: string |
   return (
     <motion.div 
       layout
-      className="flex items-center gap-4 rounded-3xl border border-neutral-100 bg-white p-4 shadow-sm"
+      className="flex items-center gap-4 rounded-3xl border border-brand-border bg-brand-card p-4 shadow-sm"
     >
       {item.imageUrl && (
-        <div className="h-20 w-20 flex-shrink-0 overflow-hidden rounded-2xl bg-neutral-100">
+        <div className="h-20 w-20 flex-shrink-0 overflow-hidden rounded-2xl bg-brand-bg border border-brand-border">
           <img src={item.imageUrl} alt={item.name} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
         </div>
       )}
       <div className="flex-1">
-        <h4 className="font-bold text-neutral-900">{item.name}</h4>
+        <h4 className="font-bold">{item.name}</h4>
         {businessType !== 'Salon' && businessType !== 'Clinic' && (
-          <p className="text-xs text-neutral-500 line-clamp-1">{item.description}</p>
+          <p className="text-xs opacity-50 line-clamp-1">{item.description}</p>
         )}
         {item.volume && (
           <div className="mt-1">
-            <span className="inline-block rounded-md bg-orange-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-orange-600">
+            <span className="inline-block rounded-md bg-brand-secondary border border-brand-primary/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-brand-primary">
               {item.volume}
             </span>
           </div>
         )}
-        <p className="mt-1 font-bold text-neutral-900">{formatCurrency(item.price)}</p>
+        <p className="mt-1 font-bold text-brand-primary">{formatCurrency(item.price)}</p>
       </div>
       <div className="flex flex-col items-center gap-2">
         {inCart ? (
-            <div className="flex items-center gap-3 rounded-full bg-neutral-100 p-1">
-              <button onClick={() => updateCart(item, -1)} className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-orange-600 shadow-sm"><Minus className="h-4 w-4" /></button>
+            <div className="flex items-center gap-3 rounded-full bg-brand-bg p-1 border border-brand-border">
+              <button onClick={() => updateCart(item, -1)} className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-card text-brand-primary shadow-sm border border-brand-border"><Minus className="h-4 w-4" /></button>
               <span className="text-sm font-bold">{inCart.quantity}</span>
               <button 
                 disabled={isAppointmentType ? true : isServiceOrFood ? false : (item.stockCount !== null && item.stockCount !== undefined) ? inCart.quantity >= item.stockCount : false}
                 onClick={() => updateCart(item, 1)} 
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-orange-600 shadow-sm disabled:opacity-50"
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-card text-brand-primary shadow-sm border border-brand-border disabled:opacity-50"
                >
                  <Plus className="h-4 w-4" />
                </button>
@@ -541,7 +550,7 @@ function MenuItemCard({ item, cart, updateCart, businessType }: { key?: string |
           <button 
             disabled={isServiceOrFood ? false : (item.stockCount !== null && item.stockCount !== undefined) ? item.stockCount <= 0 : false}
             onClick={() => updateCart(item, 1)}
-            className="flex h-10 w-10 items-center justify-center rounded-2xl bg-orange-600 text-white shadow-lg shadow-orange-100 transition-transform active:scale-90 disabled:opacity-50 disabled:bg-neutral-300"
+            className="flex h-10 w-10 items-center justify-center rounded-2xl bg-brand-primary text-white shadow-lg shadow-brand-primary/20 transition-all active:scale-90 disabled:opacity-50 disabled:bg-neutral-300"
           >
             <Plus className="h-5 w-5" />
           </button>
@@ -646,7 +655,7 @@ function OrderStatusView({ order, restaurantName, googleMapReviewLink, businessT
             </motion.div>
          )}
       </AnimatePresence>
-      <div className="flex min-h-screen flex-col items-center justify-center bg-white p-8 text-center">
+      <div className="flex min-h-screen flex-col items-center justify-center bg-brand-bg p-8 text-center">
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -657,7 +666,7 @@ function OrderStatusView({ order, restaurantName, googleMapReviewLink, businessT
             <div className={cn("h-24 w-24 rounded-full border-4 p-4",
               order.status === 'COMPLETED' || ((businessType === 'Salon' || businessType === 'Clinic') && order.status !== 'CANCELLED') ? "border-emerald-100 bg-emerald-50 text-emerald-500" :
               order.status === 'CANCELLED' ? "border-red-100 bg-red-50 text-red-500" :
-              "border-orange-100 bg-orange-50 text-orange-600"
+              "border-brand-primary/20 bg-brand-secondary text-brand-primary"
             )}>
               {order.status === 'COMPLETED' || ((businessType === 'Salon' || businessType === 'Clinic') && order.status !== 'CANCELLED') ? (
                 <CheckCircle2 className="h-full w-full" />
@@ -670,11 +679,11 @@ function OrderStatusView({ order, restaurantName, googleMapReviewLink, businessT
           </div>
         </div>
 
-        <h2 className="text-3xl font-black text-neutral-900">
+        <h2 className="text-3xl font-black">
           {order.status === 'CANCELLED' ? 'Order Cancelled' : ((businessType === 'Salon' || businessType === 'Clinic') ? 'Thank You!' : `Order ${order.status.toLowerCase()}!`)}
         </h2>
-        <p className="mt-2 text-neutral-500">
-          From <span className="font-bold text-neutral-900">{restaurantName}</span>
+        <p className="mt-2 opacity-60">
+          From <span className="font-bold">{restaurantName}</span>
         </p>
 
         {order.status === 'CANCELLED' ? (
@@ -696,31 +705,31 @@ function OrderStatusView({ order, restaurantName, googleMapReviewLink, businessT
               <h3 className="text-xl font-bold text-neutral-900">Submitted successfully!</h3>
               <p className="text-sm text-neutral-500">Your selections have been sent.</p>
               
-              <div className="mt-6 rounded-2xl bg-neutral-50 p-4 border border-neutral-100 mx-auto max-w-xs">
-                <p className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-2">Staff Code</p>
+              <div className="mt-6 rounded-2xl bg-brand-bg p-4 border border-brand-border mx-auto max-w-xs">
+                <p className="text-[10px] font-black text-brand-text/40 uppercase tracking-widest mb-2">Staff Code</p>
                 {isEditingStaffCode ? (
                   <div className="flex items-center gap-2">
                     <input 
                       type="text" 
                       value={newStaffCode} 
                       onChange={e => setNewStaffCode(e.target.value)}
-                      className="w-full rounded-xl border border-neutral-200 px-3 py-2 text-center font-bold text-neutral-900 outline-none"
+                      className="w-full rounded-xl border border-brand-border bg-brand-card px-3 py-2 text-center font-bold text-brand-text outline-none focus:border-brand-primary"
                     />
                     <button 
                       disabled={isUpdating || !newStaffCode.trim()} 
                       onClick={submitNewStaffCode}
-                      className="rounded-xl bg-orange-600 px-4 py-2 font-bold text-white transition-all hover:bg-orange-700 disabled:opacity-50"
+                      className="rounded-xl bg-brand-primary px-4 py-2 font-bold text-white transition-all hover:opacity-90 disabled:opacity-50"
                     >
                       {isUpdating ? '...' : <Check className="h-4 w-4" />}
                     </button>
                   </div>
                 ) : (
                   <div>
-                    <span className="text-2xl font-black text-neutral-900">{order.tableNo}</span>
+                    <span className="text-2xl font-black text-brand-text">{order.tableNo}</span>
                     {!hasEditedStaffCode && (
                       <button 
                         onClick={() => setIsEditingStaffCode(true)}
-                        className="ml-3 text-sm font-bold text-orange-600 hover:text-orange-700 underline underline-offset-2"
+                        className="ml-3 text-sm font-bold text-brand-primary hover:opacity-80 underline underline-offset-2"
                       >
                         Edit
                       </button>
@@ -728,7 +737,7 @@ function OrderStatusView({ order, restaurantName, googleMapReviewLink, businessT
                   </div>
                 )}
                 {hasEditedStaffCode && !isEditingStaffCode && (
-                  <p className="mt-2 text-[10px] text-neutral-400 font-medium">Code can only be edited once.</p>
+                  <p className="mt-2 text-[9px] text-brand-text/40 font-black uppercase">Code can only be edited once.</p>
                 )}
               </div>
 
@@ -738,7 +747,7 @@ function OrderStatusView({ order, restaurantName, googleMapReviewLink, businessT
                     localStorage.removeItem(`activeOrder_${order.restaurantId}`);
                     window.location.reload();
                   }}
-                  className="px-6 py-3 rounded-2xl bg-neutral-100 text-neutral-900 font-bold hover:bg-neutral-200 transition-colors"
+                  className="px-6 py-3 rounded-2xl bg-brand-secondary text-brand-primary font-bold hover:opacity-80 transition-all active:scale-95 border border-brand-primary/10"
                 >
                   Go Back
                 </button>
@@ -756,21 +765,21 @@ function OrderStatusView({ order, restaurantName, googleMapReviewLink, businessT
                   {!isLast && (
                     <div className={cn(
                       "absolute left-[13px] top-8 w-0.5 h-10 transition-colors",
-                      isCompleted ? "bg-orange-500" : "bg-neutral-100"
+                      isCompleted ? "bg-brand-primary" : "bg-brand-border"
                     )} />
                   )}
                   <div className={cn(
                     "z-10 flex h-7 w-7 items-center justify-center rounded-full border-2 transition-all",
-                    isCompleted ? "bg-orange-500 border-orange-500 text-white" : 
-                    isActive ? "bg-white border-orange-500 text-orange-500" : "bg-white border-neutral-100 text-neutral-300"
+                    isCompleted ? "bg-brand-primary border-brand-primary text-white" : 
+                    isActive ? "bg-brand-card border-brand-primary text-brand-primary" : "bg-brand-card border-brand-border text-brand-text/10"
                   )}>
                     {isCompleted ? <CheckCircle2 className="h-4 w-4" /> : <step.icon className="h-4 w-4" />}
                   </div>
                   <div>
-                    <h4 className={cn("text-sm font-bold", isCompleted || isActive ? "text-neutral-900" : "text-neutral-300")}>
+                    <h4 className={cn("text-sm font-black", isCompleted || isActive ? "text-brand-text" : "opacity-20")}>
                       {step.label}
                     </h4>
-                    {isActive && <span className="text-[10px] font-black uppercase text-orange-600">Currently</span>}
+                    {isActive && <span className="text-[10px] font-black uppercase text-brand-primary">Currently</span>}
                   </div>
                 </div>
               );
@@ -780,15 +789,15 @@ function OrderStatusView({ order, restaurantName, googleMapReviewLink, businessT
         )}
 
         {order.status !== 'CANCELLED' && (
-          <div className="mt-12 rounded-3xl bg-neutral-50 p-6">
-            <div className="flex justify-between text-sm font-bold">
-              <span className="text-neutral-400">Subtotal</span>
-              <span className="text-neutral-900">{formatCurrency(order.totalAmount)}</span>
+          <div className="mt-12 rounded-3xl bg-brand-bg p-6 border border-brand-border">
+            <div className="flex justify-between text-sm font-black uppercase tracking-widest">
+              <span className="opacity-40">Subtotal</span>
+              <span className="text-brand-text">{formatCurrency(order.totalAmount)}</span>
             </div>
             {(businessType !== 'Salon' && businessType !== 'Clinic') && (
-              <div className="mt-2 flex justify-between text-sm font-bold">
-                <span className="text-neutral-400">Estimated Time</span>
-                <span className="text-neutral-900">15-20 mins</span>
+              <div className="mt-2 flex justify-between text-sm font-black uppercase tracking-widest">
+                <span className="opacity-40">Estimated Time</span>
+                <span className="text-brand-text">15-20 mins</span>
               </div>
             )}
           </div>
@@ -800,14 +809,14 @@ function OrderStatusView({ order, restaurantName, googleMapReviewLink, businessT
               href={googleMapReviewLink} 
               target="_blank" 
               rel="noopener noreferrer"
-              className="flex items-center justify-center gap-2 rounded-2xl bg-white border border-neutral-100 p-4 text-sm font-bold text-neutral-900 shadow-sm hover:bg-neutral-50 active:scale-95 transition-all"
+              className="flex items-center justify-center gap-2 rounded-2xl bg-brand-card border border-brand-border p-4 text-sm font-black text-brand-text shadow-sm hover:opacity-80 active:scale-95 transition-all uppercase tracking-widest"
             >
               ⭐ Write a review on Google Maps
             </a>
           </div>
         )}
 
-        <p className="mt-8 text-xs text-neutral-400">
+        <p className="mt-8 text-[10px] font-black uppercase tracking-widest opacity-30">
           {order.status === 'CANCELLED' ? 'You may close this page.' : (
             (businessType === 'Salon' || businessType === 'Clinic') ? 'You may close this page.' : 'Keep this page open to track your meal.'
           )}

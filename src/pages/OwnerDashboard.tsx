@@ -70,8 +70,15 @@ import {
   Users,
   Shield,
   History,
-  RefreshCcw
+  RefreshCcw,
+  Palette,
+  Sparkles,
+  Zap,
+  Star,
+  Moon,
+  Layers
 } from 'lucide-react';
+import { THEMES, getTheme, applyTheme } from '../themes';
 import { cn, formatCurrency, handleFirestoreError, OperationType } from '../lib/utils';
 import { MenuItem, Order, Restaurant, OrderStatus, QrTable, StaffMember, StoreCustomer, StaffPermission } from '../types';
 import { BUSINESS_TYPES } from '../constants';
@@ -686,6 +693,14 @@ export default function OwnerDashboard() {
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [allRestaurants, setAllRestaurants] = useState<Restaurant[]>([]);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (restaurant?.theme) {
+      applyTheme(restaurant.theme);
+    } else {
+      applyTheme('classic-orange');
+    }
+  }, [restaurant?.theme]);
   const [isStaff, setIsStaff] = useState(false);
   const navigate = useNavigate();
 
@@ -776,25 +791,25 @@ export default function OwnerDashboard() {
 
   if (loading || !restaurant) return (
     <div className="flex h-screen items-center justify-center">
-      <div className="h-8 w-8 animate-spin rounded-full border-4 border-orange-500 border-t-transparent" />
+      <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-primary border-t-transparent" />
     </div>
   );
 
   return (
-    <div className="flex min-h-screen bg-neutral-50 lg:flex-row">
+    <div className="flex min-h-screen bg-brand-bg text-brand-text lg:flex-row">
       {/* Sidebar */}
-      <aside className="fixed bottom-0 z-50 flex w-full border-t border-neutral-200 bg-white p-2 lg:relative lg:bottom-auto lg:z-0 lg:w-64 lg:flex-col lg:border-r lg:border-t-0 lg:p-6">
+      <aside className="fixed bottom-0 z-50 flex w-full border-t border-brand-border bg-brand-card p-2 lg:relative lg:bottom-auto lg:z-0 lg:w-64 lg:flex-col lg:border-r lg:border-t-0 lg:p-6 shadow-2xl lg:shadow-none">
         <div className="hidden lg:mb-10 lg:block">
           <select 
             value={restaurant.id}
             onChange={(e) => handleSwitchRestaurant(e.target.value)}
-            className="w-full text-xl font-bold text-orange-600 bg-transparent border-none outline-none cursor-pointer truncate hover:text-orange-700"
+            className="w-full text-xl font-bold text-brand-primary bg-transparent border-none outline-none cursor-pointer truncate hover:opacity-80"
           >
             {allRestaurants.map(r => (
-              <option key={r.id} value={r.id} className="text-base text-neutral-900">{r.name}</option>
+              <option key={r.id} value={r.id} className="text-base bg-brand-card text-brand-text">{r.name}</option>
             ))}
           </select>
-          <p className="text-xs text-neutral-400 mt-1">Merchant Dashboard</p>
+          <p className="text-[10px] font-black uppercase tracking-widest text-brand-text/40 mt-1">Merchant Dashboard</p>
         </div>
 
         <nav className="flex w-full justify-around gap-2 lg:flex-col lg:justify-start">
@@ -1197,7 +1212,7 @@ function NavBtn({ active, onClick, icon, label, isLast }: { active: boolean, onC
       className={cn(
         "flex flex-col items-center gap-1 rounded-xl px-4 py-3 text-sm font-medium transition-all lg:flex-row lg:gap-3",
         active 
-          ? "bg-orange-600 text-white shadow-lg shadow-orange-100" 
+          ? "bg-brand-primary text-white shadow-lg shadow-brand-secondary" 
           : "text-neutral-500 hover:bg-neutral-100",
         isLast && "lg:mt-auto"
       )}
@@ -1239,7 +1254,7 @@ function OrdersTab({ restaurantId, businessType }: { restaurantId: string, busin
   const statusMap: Record<OrderStatus, { color: string, icon: any }> = {
     PENDING: { color: 'bg-amber-100 text-amber-700 border-amber-200', icon: Clock },
     ACCEPTED: { color: 'bg-blue-100 text-blue-700 border-blue-200', icon: Check },
-    PREPARING: { color: 'bg-orange-100 text-orange-700 border-orange-200', icon: Pizza },
+    PREPARING: { color: 'bg-brand-secondary text-brand-primary border-brand-secondary', icon: Pizza },
     COMPLETED: { color: 'bg-emerald-100 text-emerald-700 border-emerald-200', icon: CheckCircle },
     CANCELLED: { color: 'bg-neutral-100 text-neutral-500 border-neutral-200', icon: X }
   };
@@ -1303,7 +1318,7 @@ function OrderCard({ order, updateStatus, statusMap, businessType }: { key?: Rea
               {order.items.map((item, i) => (
                 <li key={i} className="flex justify-between text-xs">
                   <span className="text-neutral-600 font-medium">
-                    <span className="inline-block min-w-[20px] font-bold text-orange-600">{item.quantity}x</span> {item.name}
+                    <span className="inline-block min-w-[20px] font-bold text-brand-primary">{item.quantity}x</span> {item.name}
                   </span>
                   <span className="font-bold text-neutral-900">{formatCurrency(item.price * item.quantity)}</span>
                 </li>
@@ -1345,7 +1360,7 @@ function OrderCard({ order, updateStatus, statusMap, businessType }: { key?: Rea
             {order.status === 'ACCEPTED' && (
               <button 
                 onClick={(e) => { e.stopPropagation(); updateStatus(order.id, 'PREPARING'); }}
-                className="flex items-center justify-center gap-1.5 p-3 text-[11px] font-black uppercase tracking-widest text-orange-600 hover:bg-orange-50 col-span-2"
+                className="flex items-center justify-center gap-1.5 p-3 text-[11px] font-black uppercase tracking-widest text-brand-primary hover:bg-brand-secondary col-span-2"
               >
                 <Pizza className="h-4 w-4" /> PREP
               </button>
@@ -1494,7 +1509,7 @@ function MenuTab({ restaurantId, businessType }: { restaurantId: string, busines
 
         <button 
           onClick={() => navigate(`/menu/${restaurantId}/PREVIEW`)}
-          className="flex items-center gap-2 whitespace-nowrap rounded-full bg-orange-100 px-5 py-2.5 text-sm font-bold text-orange-700 transition-all hover:bg-orange-200 active:scale-95"
+          className="flex items-center gap-2 whitespace-nowrap rounded-full bg-brand-secondary px-5 py-2.5 text-sm font-bold text-brand-primary transition-all hover:opacity-80 active:scale-95"
         >
           <ScanLine className="-ml-1 h-4 w-4" />
           Public Preview
@@ -1532,7 +1547,7 @@ function MenuTab({ restaurantId, businessType }: { restaurantId: string, busines
            placeholder="Search items..."
            value={searchTerm}
            onChange={(e) => setSearchTerm(e.target.value)}
-           className="rounded-full border border-neutral-200 px-4 py-2.5 text-sm outline-none focus:border-orange-500 w-full md:w-64"
+           className="rounded-full border border-neutral-200 px-4 py-2.5 text-sm outline-none focus:border-brand-primary w-full md:w-64"
         />
       </div>
 
@@ -1641,7 +1656,7 @@ function MenuTab({ restaurantId, businessType }: { restaurantId: string, busines
             </div>
             <div className="flex items-end gap-2 md:col-span-1">
               <button type="button" onClick={resetForm} className="h-10 w-full rounded-lg bg-neutral-100 font-bold text-neutral-500 hover:bg-neutral-200">Cancel</button>
-              <button type="submit" className="h-10 w-full rounded-lg bg-orange-600 font-bold text-white hover:bg-orange-700">{editingId ? 'Update' : 'Save'}</button>
+              <button type="submit" className="h-10 w-full rounded-lg bg-brand-primary font-bold text-white hover:opacity-90">{editingId ? 'Update' : 'Save'}</button>
             </div>
           </motion.form>
         )}
@@ -1649,7 +1664,7 @@ function MenuTab({ restaurantId, businessType }: { restaurantId: string, busines
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
         {filteredItems.map(item => (
-          <div key={item.id} className="group relative rounded-2xl border border-neutral-200 bg-white p-4 transition-all hover:border-orange-200 flex flex-col justify-between">
+          <div key={item.id} className="group relative rounded-2xl border border-neutral-200 bg-white p-4 transition-all hover:border-brand-primary flex flex-col justify-between">
             <div>
               {item.imageUrl && (
                 <div className="h-32 w-full mb-3 overflow-hidden rounded-xl bg-neutral-100">
@@ -1659,9 +1674,9 @@ function MenuTab({ restaurantId, businessType }: { restaurantId: string, busines
               <div className="flex items-start justify-between">
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-[10px] font-black uppercase text-orange-500">{item.category}</span>
+                    <span className="text-[10px] font-black uppercase text-brand-primary">{item.category}</span>
                     {item.volume && (
-                      <span className="rounded-md bg-orange-50 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest text-orange-600">
+                      <span className="rounded-md bg-brand-secondary px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest text-brand-primary">
                         {item.volume}
                       </span>
                     )}
@@ -1677,14 +1692,14 @@ function MenuTab({ restaurantId, businessType }: { restaurantId: string, busines
                   )}
                 </div>
                 <div className="text-right">
-                  <p className="font-bold text-orange-600">{formatCurrency(item.price)}</p>
+                  <p className="font-bold text-brand-primary">{formatCurrency(item.price)}</p>
                 </div>
               </div>
             </div>
             <div className="flex items-center justify-between mt-4 border-t border-neutral-100 pt-3">
               <button 
                 onClick={() => handleEdit(item)}
-                className="text-xs font-bold text-orange-600 hover:text-orange-700 uppercase tracking-widest flex items-center gap-1"
+                className="text-xs font-bold text-brand-primary hover:opacity-80 uppercase tracking-widest flex items-center gap-1"
               >
                 Edit
               </button>
@@ -1916,24 +1931,24 @@ function QRCard({ num, url, restaurantName, label, onDelete, onEdit, targetLink,
   return (
     <motion.div 
       layout
-      className="group relative flex flex-col justify-between rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm transition-all hover:shadow-md hover:border-orange-200"
+      className="group relative flex flex-col justify-between rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm transition-all hover:shadow-md hover:border-brand-primary"
     >
       <div className="flex justify-between items-start gap-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-50 text-orange-600">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-secondary text-brand-primary">
              <Link className="h-5 w-5" />
           </div>
           <div>
-            <h4 className="font-bold text-neutral-900 truncate max-w-[150px]">{label}</h4>
+            <h4 className="font-bold text-neutral-900 truncate max-w-[120px]">{label}</h4>
             <div className="mt-1">
-              <span className="rounded-md bg-orange-100 px-2 py-0.5 text-[10px] font-black text-orange-600 uppercase tracking-widest">{(businessType === 'Salon' || businessType === 'Clinic') ? 'Code ' : 'Table '}{num}</span>
+              <span className="rounded-md bg-brand-secondary border border-brand-primary/10 px-2 py-0.5 text-[10px] font-black text-brand-primary uppercase tracking-widest">{(businessType === 'Salon' || businessType === 'Clinic') ? 'Code ' : 'Table '}{num}</span>
             </div>
           </div>
         </div>
         <div className="flex flex-col gap-1 shrink-0">
            <button 
              onClick={onEdit} 
-             className="rounded-lg p-1.5 text-neutral-400 hover:bg-orange-50 hover:text-orange-600 transition-colors"
+             className="rounded-lg p-1.5 text-neutral-400 hover:bg-brand-secondary hover:text-brand-primary transition-colors"
              title="Edit"
            >
              <LayoutDashboard className="h-4 w-4" />
@@ -1951,7 +1966,7 @@ function QRCard({ num, url, restaurantName, label, onDelete, onEdit, targetLink,
       <div className="mt-5 border-t border-neutral-100 pt-4">
         <button 
           onClick={copyUrl}
-          className="w-full flex items-center justify-center gap-2 rounded-xl bg-orange-50 py-2.5 text-xs font-black text-orange-600 transition-colors hover:bg-orange-100 active:scale-95 uppercase tracking-widest"
+          className="w-full flex items-center justify-center gap-2 rounded-xl bg-brand-secondary py-2.5 text-xs font-black text-brand-primary transition-colors hover:opacity-80 active:scale-95 uppercase tracking-widest"
           title="Copy Link"
         >
           <Link className="h-3.5 w-3.5" /> Copy Link
@@ -2143,9 +2158,9 @@ function StaffPerformanceAnalytics({ restaurantId, staffMembers, forceStaffView 
                 <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest block mb-4">Monthly Target</span>
                 <p className="text-2xl font-black text-neutral-900">₹{monthTotal.toLocaleString()}</p>
                 <div className="mt-2 h-1 w-full bg-neutral-100 rounded-full overflow-hidden">
-                   <div className="h-full bg-orange-500" style={{ width: '100%' }} />
+                   <div className="h-full bg-brand-primary" style={{ width: '100%' }} />
                 </div>
-                <p className="text-[9px] font-bold text-orange-500 uppercase mt-2 tracking-tighter">{monthCount} Total Actions</p>
+                <p className="text-[9px] font-bold text-brand-primary uppercase mt-2 tracking-tighter">{monthCount} Total Actions</p>
              </div>
           </div>
 
@@ -2988,6 +3003,67 @@ function SettingsTab({ onLogout, restaurant, setRestaurant, setActiveTab, isStaf
         </div>
       )}
 
+      {!isStaff && (
+        <div className="rounded-3xl border border-brand-border bg-brand-card p-6 shadow-sm sm:p-8">
+          <h3 className="mb-6 text-lg font-bold text-brand-text flex items-center gap-2">
+            <Palette className="h-5 w-5 text-brand-primary" />
+            Visual Themes
+          </h3>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {Object.values(THEMES).map((t) => (
+              <button
+                key={t.id}
+                disabled={updating}
+                onClick={async () => {
+                  setUpdating(true);
+                  try {
+                    await updateDoc(doc(db, 'restaurants', restaurant.id), { theme: t.id });
+                    setRestaurant({ ...restaurant, theme: t.id as any });
+                  } catch (e) {
+                    handleFirestoreError(e, OperationType.UPDATE, 'restaurants');
+                  }
+                  setUpdating(false);
+                }}
+                className={`relative overflow-hidden rounded-2xl border-2 p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${restaurant.theme === t.id || (!restaurant.theme && t.id === 'classic-orange') ? 'border-brand-primary' : 'border-brand-border'}`}
+                style={{ 
+                  backgroundColor: t.bgHex,
+                  backdropFilter: t.id === 'glass-morphic' ? 'blur(10px)' : 'none'
+                }}
+              >
+                {t.id === 'noir-dark' && <Moon className="absolute -right-1 -top-1 h-8 w-8 text-white opacity-20" />}
+                {t.id === 'glass-morphic' && <Layers className="absolute -right-1 -top-1 h-8 w-8 text-pink-400 opacity-30 animate-pulse" />}
+                {t.id === 'classic-orange' && <Sparkles className="absolute -right-1 -top-1 h-8 w-8 text-orange-400 opacity-30" />}
+                {t.id === 'cute-marshmallow' && <Star className="absolute -right-1 -top-1 h-8 w-8 text-pink-400 opacity-30 animate-pulse" />}
+                {t.id === 'matcha-cafe' && <Zap className="absolute -right-1 -top-1 h-8 w-8 text-emerald-400 opacity-30" />}
+                
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="h-10 w-10 rounded-xl flex items-center justify-center shadow-sm" style={{ backgroundColor: t.primaryHex, border: t.id === 'glass-morphic' ? '1px solid rgba(255,255,255,0.2)' : 'none' }}>
+                    <div className="h-4 w-4 rounded-full bg-white opacity-40"></div>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-black uppercase tracking-tight" style={{ color: t.textHex }}>{t.name}</h4>
+                    <p className="text-[10px] opacity-60" style={{ color: t.textHex }}>{t.description}</p>
+                  </div>
+                </div>
+                
+                <div className="flex gap-1.5 opacity-80">
+                   <div className="h-1.5 flex-1 rounded-full" style={{ backgroundColor: t.primaryHex }}></div>
+                   <div className="h-1.5 flex-1 rounded-full" style={{ backgroundColor: t.secondaryHex }}></div>
+                   <div className="h-1.5 flex-1 rounded-full" style={{ backgroundColor: t.primaryHex, opacity: 0.3 }}></div>
+                </div>
+
+                {(restaurant.theme === t.id || (!restaurant.theme && t.id === 'classic-orange')) && (
+                  <div className="absolute right-3 bottom-3 h-5 w-5 rounded-full bg-brand-primary flex items-center justify-center text-white shadow-lg">
+                    <Check className="h-3 w-3" />
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
         <button 
           onClick={onLogout}
           className="flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-red-50 px-6 py-3 font-bold text-red-600 transition-all hover:bg-red-100 active:scale-95"
@@ -2999,9 +3075,9 @@ function SettingsTab({ onLogout, restaurant, setRestaurant, setActiveTab, isStaf
         <div className="rounded-3xl border border-neutral-100 bg-white p-6 shadow-sm sm:p-8">
           <h3 className="mb-4 text-lg font-bold text-neutral-900">Shop Management</h3>
           
-          <div className="mb-6 flex items-center justify-between rounded-2xl border border-neutral-100 bg-orange-50 p-4">
+          <div className="mb-6 flex items-center justify-between rounded-2xl border border-neutral-100 bg-brand-secondary/40 p-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-100 text-orange-600">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-secondary text-brand-primary border border-brand-primary/10">
                 <Users className="h-5 w-5" />
               </div>
               <div>
@@ -3022,7 +3098,7 @@ function SettingsTab({ onLogout, restaurant, setRestaurant, setActiveTab, isStaf
                   setUpdating(false);
                 }
               }}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${restaurant.enableStaffCode ? 'bg-orange-600' : 'bg-neutral-300'}`}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${restaurant.enableStaffCode ? 'bg-brand-primary' : 'bg-neutral-300'}`}
             >
               <span
                 className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${restaurant.enableStaffCode ? 'translate-x-6' : 'translate-x-1'}`}
@@ -3035,21 +3111,21 @@ function SettingsTab({ onLogout, restaurant, setRestaurant, setActiveTab, isStaf
               onClick={() => setActiveTab('staff')}
               className="flex items-center gap-3 rounded-xl border border-neutral-200 bg-neutral-50 p-4 font-bold text-neutral-700 transition-all hover:bg-neutral-100 active:scale-95"
             >
-              <Package className="h-6 w-6 text-orange-600" />
+              <Package className="h-6 w-6 text-brand-primary" />
               Staff Management
             </button>
             <button 
               onClick={() => setActiveTab('qr')}
               className="flex items-center gap-3 rounded-xl border border-neutral-200 bg-neutral-50 p-4 font-bold text-neutral-700 transition-all hover:bg-neutral-100 active:scale-95"
             >
-              <Link className="h-6 w-6 text-orange-600" />
+              <Link className="h-6 w-6 text-brand-primary" />
               QR Management
             </button>
             <button 
               onClick={() => setActiveTab('staff_analytics')}
               className={`flex items-center gap-3 rounded-xl border border-neutral-200 p-4 font-bold transition-all active:scale-95 sm:col-span-2 ${restaurant.enableStaffCode ? 'bg-neutral-50 text-neutral-700 hover:bg-neutral-100' : 'bg-neutral-100 text-neutral-400 opacity-60'}`}
             >
-              <BarChart3 className={`h-6 w-6 ${restaurant.enableStaffCode ? 'text-orange-600' : 'text-neutral-400'}`} />
+              <BarChart3 className={`h-6 w-6 ${restaurant.enableStaffCode ? 'text-brand-primary' : 'text-neutral-400'}`} />
               Staff Analytics {!restaurant.enableStaffCode && <span className="ml-auto text-[10px] uppercase font-black tracking-tighter opacity-50">(Feature Disabled)</span>}
             </button>
           </div>

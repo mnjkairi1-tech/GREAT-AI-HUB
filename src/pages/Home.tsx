@@ -5,8 +5,13 @@ import { collection, query, where, getDocs } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 import { motion } from 'motion/react';
 import { UtensilsCrossed, ArrowRight, UserCircle2, Mail, Lock, Sparkles, RefreshCcw } from 'lucide-react';
+import { applyTheme } from '../themes';
 
 export default function Home() {
+  useEffect(() => {
+    applyTheme('classic-orange'); // Default on home page before login
+  }, []);
+
   const [loading, setLoading] = useState(true);
   const [mode, setModeRaw] = useState<'welcome' | 'login' | 'signup' | 'verify' | 'forgot'>('welcome');
 
@@ -178,20 +183,20 @@ export default function Home() {
 
   if (loading) return (
     <div className="flex h-screen items-center justify-center">
-      <div className="h-12 w-12 animate-spin rounded-full border-4 border-orange-500 border-t-transparent" />
+      <div className="h-12 w-12 animate-spin rounded-full border-4 border-brand-primary border-t-transparent" />
     </div>
   );
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center p-6 bg-orange-50 text-center">
+    <div className="flex min-h-screen flex-col items-center justify-center p-6 bg-brand-secondary/20 text-center">
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="max-w-md w-full bg-white p-8 rounded-3xl shadow-xl shadow-orange-100"
+        className="max-w-md w-full bg-white p-8 rounded-3xl shadow-xl shadow-brand-secondary"
       >
         <div className="flex justify-center mb-6">
-          <div className="rounded-3xl bg-orange-100 p-4">
-            <Sparkles className="h-10 w-10 text-orange-600" />
+          <div className="rounded-3xl bg-brand-secondary p-4">
+            <Sparkles className="h-10 w-10 text-brand-primary" />
           </div>
         </div>
         
@@ -201,7 +206,7 @@ export default function Home() {
                 <p className="text-neutral-500 mb-8">Start managing your business with love.</p>
                 <div className="flex flex-col gap-3">
                     <button onClick={() => setMode('login')} className="w-full bg-neutral-900 text-white font-bold py-4 rounded-2xl">Login</button>
-                    <button onClick={() => setMode('signup')} className="w-full bg-orange-100 text-orange-700 font-bold py-4 rounded-2xl">Create Account</button>
+                    <button onClick={() => setMode('signup')} className="w-full bg-brand-secondary text-brand-primary font-bold py-4 rounded-2xl">Create Account</button>
                     <button onClick={handleGoogleLogin} className="w-full border border-neutral-200 text-neutral-700 font-semibold py-4 rounded-2xl flex items-center justify-center gap-2">
                         <img src="https://www.google.com/favicon.ico" alt="Google" className="h-5 w-5" />
                         Google
@@ -223,13 +228,13 @@ export default function Home() {
                 </div>
                 {mode === 'login' && (
                     <div className="text-right">
-                        <button type="button" onClick={() => setMode('forgot')} className="text-sm font-bold text-orange-600 hover:text-orange-700">Forgot Password?</button>
+                        <button type="button" onClick={() => setMode('forgot')} className="text-sm font-bold text-brand-primary hover:opacity-80">Forgot Password?</button>
                     </div>
                 )}
                 <button 
                     disabled={loading}
                     onClick={handleEmailAuth} 
-                    className="w-full bg-orange-600 text-white font-bold py-3 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    className="w-full bg-brand-primary text-white font-bold py-3 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                     {loading && <RefreshCcw className="h-4 w-4 animate-spin" />}
                     {mode === 'login' ? 'Login' : 'Sign Up'}
@@ -251,18 +256,18 @@ export default function Home() {
                       placeholder="Email Address" 
                       value={email} 
                       onChange={e => setEmail(e.target.value)} 
-                      className="w-full border border-neutral-200 pl-10 pr-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent" 
+                      className="w-full border border-neutral-200 pl-10 pr-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary" 
                     />
                 </div>
                 <button 
                     disabled={loading}
                     onClick={handleForgotPassword} 
-                    className="w-full bg-orange-600 text-white font-bold py-3 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    className="w-full bg-brand-primary text-white font-bold py-3 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                     {loading && <RefreshCcw className="h-4 w-4 animate-spin" />}
                     Send password reset link
                 </button>
-                <button type="button" onClick={() => window.history.back()} className="w-full text-neutral-500 text-sm font-bold hover:text-orange-600">Back to Login</button>
+                <button type="button" onClick={() => window.history.back()} className="w-full text-neutral-500 text-sm font-bold hover:text-brand-primary">Back to Login</button>
             </div>
         )}
 
@@ -274,11 +279,11 @@ export default function Home() {
                    Please verify your email to continue.
                 </p>
                 <div className="flex flex-col gap-3 mt-4">
-                  <button onClick={handleCheckVerification} className="w-full bg-orange-600 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2">
+                  <button onClick={handleCheckVerification} className="w-full bg-brand-primary text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2">
                     <RefreshCcw className="h-5 w-5" />
                     I've verified my email
                   </button>
-                  <button onClick={handleResendVerification} className="w-full bg-orange-100 text-orange-700 font-bold py-4 rounded-2xl">
+                  <button onClick={handleResendVerification} className="w-full bg-brand-secondary text-brand-primary font-bold py-4 rounded-2xl">
                     Resend Link
                   </button>
                   <button onClick={handleLogout} className="w-full text-neutral-500 font-semibold py-2">

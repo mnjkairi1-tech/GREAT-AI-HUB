@@ -4,14 +4,39 @@
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Outfit", sans-serif;
+  --color-brand-primary: var(--brand-primary, #ea580c);
+  --color-brand-secondary: var(--brand-secondary, #fff7ed);
+  --color-brand-bg: var(--brand-bg, #fafafa);
+  --color-brand-card: var(--brand-card, #ffffff);
+  --color-brand-text: var(--brand-text, #171717);
+  --color-brand-border: var(--brand-border, #f5f5f5);
 }
 
 @layer base {
+  :root {
+    --brand-primary: #ea580c;
+    --brand-secondary: #fff7ed;
+    --brand-bg: #fafafa;
+    --brand-card: #ffffff;
+    --brand-text: #171717;
+    --brand-border: #f5f5f5;
+  }
   body {
-    @apply font-sans;
+    @apply font-sans bg-brand-bg text-brand-text transition-colors duration-300;
+    background-image: radial-gradient(circle at 50% 0%, var(--brand-secondary, transparent) 0%, transparent 70%);
+    background-attachment: fixed;
+    min-height: 100vh;
   }
   h1, h2, h3, h4, h5, h6 {
-    @apply font-display tracking-tight text-neutral-900;
+    @apply font-display tracking-tight text-brand-text;
+  }
+}
+
+@layer utilities {
+  .bg-brand-card,
+  .bg-brand-bg {
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
   }
 }
 

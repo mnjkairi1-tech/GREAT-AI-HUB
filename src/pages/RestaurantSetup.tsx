@@ -6,8 +6,14 @@ import { motion } from 'motion/react';
 import { Store, ArrowRight } from 'lucide-react';
 import { handleFirestoreError, OperationType } from '../lib/utils';
 import { BUSINESS_TYPES } from '../constants';
+import { applyTheme } from '../themes';
+import { useEffect } from 'react';
 
 export default function RestaurantSetup() {
+  useEffect(() => {
+    applyTheme('classic-orange');
+  }, []);
+
   const [name, setName] = useState('');
   const [desc, setDesc] = useState('');
   const [businessType, setBusinessType] = useState(BUSINESS_TYPES[0]);
@@ -44,7 +50,7 @@ export default function RestaurantSetup() {
         className="w-full max-w-md rounded-3xl border border-neutral-100 bg-white p-8 shadow-xl"
       >
         <div className="mb-6 text-center">
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-100 text-orange-600">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-secondary text-brand-primary">
             <Store className="h-10 w-10" />
           </div>
           <h2 className="text-2xl font-bold text-neutral-900">Setup Your Business</h2>
@@ -58,7 +64,7 @@ export default function RestaurantSetup() {
               required
               value={businessType}
               onChange={(e) => setBusinessType(e.target.value)}
-              className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 outline-none transition-all focus:border-orange-500 focus:bg-white focus:ring-2 focus:ring-orange-200"
+              className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 outline-none transition-all focus:border-brand-primary focus:bg-white focus:ring-2 focus:ring-brand-secondary"
             >
               {BUSINESS_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
             </select>
@@ -71,7 +77,7 @@ export default function RestaurantSetup() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Spice Garden"
-              className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 outline-none transition-all focus:border-orange-500 focus:bg-white focus:ring-2 focus:ring-orange-200"
+               className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 outline-none transition-all focus:border-brand-primary focus:bg-white focus:ring-2 focus:ring-brand-secondary"
             />
           </div>
           <div>
@@ -81,13 +87,13 @@ export default function RestaurantSetup() {
               onChange={(e) => setDesc(e.target.value)}
               placeholder="Modern Indian cuisine..."
               rows={3}
-              className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 outline-none transition-all focus:border-orange-500 focus:bg-white focus:ring-2 focus:ring-orange-200"
+              className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 outline-none transition-all focus:border-brand-primary focus:bg-white focus:ring-2 focus:ring-brand-secondary"
             />
           </div>
 
           <button
             disabled={loading}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-orange-600 py-3 font-semibold text-white transition-all hover:bg-orange-700 active:scale-95 disabled:opacity-50"
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-primary py-3 font-semibold text-white transition-all hover:opacity-90 active:scale-95 disabled:opacity-50"
           >
             {loading ? 'Creating...' : 'Finalize Setup'} <ArrowRight className="h-5 w-5" />
           </button>

@@ -1376,10 +1376,11 @@ function OrderCard({ order, updateStatus, statusMap, businessType }: { key?: Rea
 // --- TAB: Menu ---
 function MenuTab({ restaurantId, businessType }: { restaurantId: string, businessType: string }) {
   const defaultCat = businessType === 'Salon' ? 'Hair' : businessType === 'Clinic' ? 'Consultation' : 'Main Course';
+  const isServiceOrFoodBusiness = ['clinic', 'salon', 'gym', 'restaurant', 'cafe', 'fast food', 'hotel', 'fastfood'].includes(businessType?.toLowerCase() || '');
   const [items, setItems] = useState<MenuItem[]>([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: '', price: '', category: defaultCat, description: '', imageUrl: '', stockCount: '' });
+  const [form, setForm] = useState({ name: '', price: '', category: defaultCat, description: '', imageUrl: '', stockCount: '', volume: '' });
   const [searchTerm, setSearchTerm] = useState('');
   const navigate = useNavigate();
 
@@ -1401,7 +1402,7 @@ function MenuTab({ restaurantId, businessType }: { restaurantId: string, busines
   );
 
   const resetForm = () => {
-    setForm({ name: '', price: '', category: defaultCat, description: '', imageUrl: '', stockCount: '' });
+    setForm({ name: '', price: '', category: defaultCat, description: '', imageUrl: '', stockCount: '', volume: '' });
     setEditingId(null);
     setIsFormOpen(false);
   };
@@ -1422,6 +1423,7 @@ function MenuTab({ restaurantId, businessType }: { restaurantId: string, busines
           isAvailable: item.isAvailable,
           price: isNaN(parseFloat(form.price)) ? 0 : parseFloat(form.price),
           stockCount: stockVal,
+          volume: form.volume || '',
           updatedAt: serverTimestamp()
         });
       } else {
@@ -1431,6 +1433,7 @@ function MenuTab({ restaurantId, businessType }: { restaurantId: string, busines
           businessType,
           price: isNaN(parseFloat(form.price)) ? 0 : parseFloat(form.price),
           stockCount: stockVal,
+          volume: form.volume || '',
           isAvailable: true,
           updatedAt: serverTimestamp()
         });
@@ -1448,7 +1451,8 @@ function MenuTab({ restaurantId, businessType }: { restaurantId: string, busines
       category: item.category,
       description: item.description || '',
       imageUrl: item.imageUrl || '',
-      stockCount: item.stockCount?.toString() || '0'
+      stockCount: item.stockCount?.toString() || '0',
+      volume: item.volume || ''
     });
     setEditingId(item.id);
     setIsFormOpen(true);
@@ -1602,7 +1606,7 @@ function MenuTab({ restaurantId, businessType }: { restaurantId: string, busines
                 className="w-full bg-transparent text-sm outline-none" 
               />
             </div>
-            {!(businessType === 'Salon' || businessType === 'Clinic') && (
+            {!isServiceOrFoodBusiness && (
               <div>
                 <label className="text-xs font-bold text-neutral-400">STOCK QUANTITY</label>
                 <input 
@@ -1610,6 +1614,18 @@ function MenuTab({ restaurantId, businessType }: { restaurantId: string, busines
                   value={form.stockCount} 
                   onChange={e => setForm({...form, stockCount: e.target.value})}
                   placeholder="0" 
+                  className="w-full bg-transparent text-sm outline-none" 
+                />
+              </div>
+            )}
+            {form.category.toLowerCase() === 'drinks' && (
+              <div>
+                <label className="text-xs font-bold text-neutral-400">VOLUME (E.G. 250ML, 1 LITER)</label>
+                <input 
+                  type="text"
+                  value={form.volume} 
+                  onChange={e => setForm({...form, volume: e.target.value})}
+                  placeholder="e.g. 500 ml" 
                   className="w-full bg-transparent text-sm outline-none" 
                 />
               </div>
@@ -1642,9 +1658,14 @@ function MenuTab({ restaurantId, businessType }: { restaurantId: string, busines
               )}
               <div className="flex items-start justify-between">
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-[10px] font-black uppercase text-orange-500">{item.category}</span>
-                    {businessType !== 'Salon' && businessType !== 'Clinic' && (
+                    {item.volume && (
+                      <span className="rounded-md bg-orange-50 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest text-orange-600">
+                        {item.volume}
+                      </span>
+                    )}
+                    {!isServiceOrFoodBusiness && (
                       <span className={cn("rounded-md px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest", item.stockCount > 0 ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600")}>
                         {item.stockCount > 0 ? `${item.stockCount} In Stock` : 'Out of Stock'}
                       </span>
@@ -2056,9 +2077,6 @@ function StaffPerformanceAnalytics({ restaurantId, staffMembers, forceStaffView 
           <div>
             <h3 className="text-xl font-black text-neutral-900">{forceStaffView ? 'My Stats' : 'Employee Stats'}</h3>
             <p className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em]">Live Performance Data</p>
-          </div>
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-50 text-orange-600">
-             <Calculator className="h-6 w-6" />
           </div>
         </div>
         

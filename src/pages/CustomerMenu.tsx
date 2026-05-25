@@ -154,8 +154,9 @@ export default function CustomerMenu() {
 
       if (isMismatch || isOldMismatch) return false;
 
-      if (restaurant?.businessType === 'Salon' || restaurant?.businessType === 'Clinic') {
-        return (i.stockCount !== null && i.stockCount !== undefined && i.stockCount !== 0) ? i.stockCount > 0 : true;
+      const isServiceOrFood = ['clinic', 'salon', 'gym', 'restaurant', 'cafe', 'fast food', 'hotel', 'fastfood'].includes(restaurant?.businessType?.toLowerCase() || '');
+      if (isServiceOrFood) {
+        return true;
       }
       return i.stockCount > 0;
     });
@@ -247,24 +248,24 @@ export default function CustomerMenu() {
       };
       const docRef = await addDoc(collection(db, qPath), orderData);
       
-      // Update stock for all items in the cart (if stock is being tracked)
-      await Promise.all(cart.map(async item => {
-        const menuItemDoc = await getDoc(doc(db, 'menuItems', item.id));
-        if (menuItemDoc.exists()) {
-          const currentStock = menuItemDoc.data().stockCount;
-          // If we are tracking stock (not null/undefined/0 for salons), decrement it
-          if (currentStock !== null && currentStock !== undefined) {
-             if ((restaurant?.businessType === 'Salon' || restaurant?.businessType === 'Clinic') && currentStock === 0) {
-               return; // Ignore default 0 stock for salons
-             }
-             await updateDoc(doc(db, 'menuItems', item.id), {
-               stockCount: increment(-item.quantity)
-             }).catch(err => {
-               console.error("Failed to update stock", err);
-             });
+      const isServiceOrFood = ['clinic', 'salon', 'gym', 'restaurant', 'cafe', 'fast food', 'hotel', 'fastfood'].includes(restaurant?.businessType?.toLowerCase() || '');
+      if (!isServiceOrFood) {
+        // Update stock for all items in the cart (if stock is being tracked)
+        await Promise.all(cart.map(async item => {
+          const menuItemDoc = await getDoc(doc(db, 'menuItems', item.id));
+          if (menuItemDoc.exists()) {
+            const currentStock = menuItemDoc.data().stockCount;
+            // If we are tracking stock (not null/undefined/0 for salons), decrement it
+            if (currentStock !== null && currentStock !== undefined) {
+               await updateDoc(doc(db, 'menuItems', item.id), {
+                 stockCount: increment(-item.quantity)
+               }).catch(err => {
+                 console.error("Failed to update stock", err);
+               });
+            }
           }
-        }
-      }));
+        }));
+      }
       
       const key = `activeOrder_${restaurantId}`;
       localStorage.setItem(key, JSON.stringify({
@@ -496,6 +497,9 @@ export default function CustomerMenu() {
 
 function MenuItemCard({ item, cart, updateCart, businessType }: { key?: string | number, item: MenuItem, cart: OrderItem[], updateCart: (i: MenuItem, d: number) => void, businessType?: string }) {
   const inCart = cart.find(i => i.id === item.id);
+  const isServiceOrFood = ['clinic', 'salon', 'gym', 'restaurant', 'cafe', 'fast food', 'hotel', 'fastfood'].includes(businessType?.toLowerCase() || '');
+  const isAppointmentType = businessType === 'Salon' || businessType === 'Clinic';
+
   return (
     <motion.div 
       layout
@@ -511,6 +515,13 @@ function MenuItemCard({ item, cart, updateCart, businessType }: { key?: string |
         {businessType !== 'Salon' && businessType !== 'Clinic' && (
           <p className="text-xs text-neutral-500 line-clamp-1">{item.description}</p>
         )}
+        {item.volume && (
+          <div className="mt-1">
+            <span className="inline-block rounded-md bg-orange-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-orange-600">
+              {item.volume}
+            </span>
+          </div>
+        )}
         <p className="mt-1 font-bold text-neutral-900">{formatCurrency(item.price)}</p>
       </div>
       <div className="flex flex-col items-center gap-2">
@@ -519,7 +530,7 @@ function MenuItemCard({ item, cart, updateCart, businessType }: { key?: string |
               <button onClick={() => updateCart(item, -1)} className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-orange-600 shadow-sm"><Minus className="h-4 w-4" /></button>
               <span className="text-sm font-bold">{inCart.quantity}</span>
               <button 
-                disabled={(businessType === 'Salon' || businessType === 'Clinic') ? true : (item.stockCount !== null && item.stockCount !== undefined) ? inCart.quantity >= item.stockCount : false}
+                disabled={isAppointmentType ? true : isServiceOrFood ? false : (item.stockCount !== null && item.stockCount !== undefined) ? inCart.quantity >= item.stockCount : false}
                 onClick={() => updateCart(item, 1)} 
                 className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-orange-600 shadow-sm disabled:opacity-50"
                >
@@ -528,7 +539,7 @@ function MenuItemCard({ item, cart, updateCart, businessType }: { key?: string |
             </div>
         ) : (
           <button 
-            disabled={((businessType === 'Salon' || businessType === 'Clinic') && item.stockCount === 0) ? false : (item.stockCount !== null && item.stockCount !== undefined) ? item.stockCount <= 0 : false}
+            disabled={isServiceOrFood ? false : (item.stockCount !== null && item.stockCount !== undefined) ? item.stockCount <= 0 : false}
             onClick={() => updateCart(item, 1)}
             className="flex h-10 w-10 items-center justify-center rounded-2xl bg-orange-600 text-white shadow-lg shadow-orange-100 transition-transform active:scale-90 disabled:opacity-50 disabled:bg-neutral-300"
           >

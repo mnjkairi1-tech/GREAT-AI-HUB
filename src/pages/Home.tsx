@@ -8,7 +8,36 @@ import { UtensilsCrossed, ArrowRight, UserCircle2, Mail, Lock, Sparkles, Refresh
 
 export default function Home() {
   const [loading, setLoading] = useState(true);
-  const [mode, setMode] = useState<'welcome' | 'login' | 'signup' | 'verify'>('welcome');
+  const [mode, setModeRaw] = useState<'welcome' | 'login' | 'signup' | 'verify' | 'forgot'>('welcome');
+
+  const setMode = (newMode: 'welcome' | 'login' | 'signup' | 'verify' | 'forgot', replace = false) => {
+    setModeRaw(newMode);
+    if (replace) {
+      window.history.replaceState({ appMode: newMode }, '');
+    } else {
+      window.history.pushState({ appMode: newMode }, '');
+    }
+  };
+
+  useEffect(() => {
+    if (window.history.state === null || !window.history.state.appMode) {
+      window.history.replaceState({ appMode: 'welcome' }, '');
+    }
+
+    const handlePopState = (event: PopStateEvent) => {
+      if (event.state && event.state.appMode) {
+        setModeRaw(event.state.appMode);
+      } else {
+        setModeRaw('welcome');
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, []);
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const navigate = useNavigate();
@@ -18,7 +47,7 @@ export default function Home() {
       if (u) {
         await u.reload();
         if (!u.emailVerified && u.providerData.some((p) => p.providerId === 'password')) {
-          setMode('verify');
+          setMode('verify', true);
           setLoading(false);
           return;
         }
@@ -37,7 +66,7 @@ export default function Home() {
           navigate('/dashboard');
         }
       } else {
-        setMode('welcome');
+        setMode('welcome', true);
       }
       setLoading(false);
     });
@@ -55,15 +84,28 @@ export default function Home() {
 
   const handleForgotPassword = async () => {
     if (!email) {
-      alert("Please enter your email first to reset your password.");
+      alert("Please enter your email to reset your password.");
       return;
     }
+    setLoading(true);
     try {
       await sendPasswordResetEmail(auth, email);
-      alert("Password reset email sent! Please check your inbox.");
+      alert("We have sent a password reset link to: " + email + ". Please check your inbox or spam folder.");
+      setMode('login');
     } catch (error: any) {
       console.error('Password reset failed:', error);
-      alert(error.message || "Failed to send reset email.");
+      const errorCode = error.code || '';
+      if (errorCode === 'auth/invalid-email') {
+        alert("Please enter a valid email address.");
+      } else if (errorCode === 'auth/user-not-found') {
+        alert("An account with this email address was not found.");
+      } else if (errorCode === 'auth/network-request-failed') {
+        alert("Network error. Please check your internet connection.");
+      } else {
+        alert(error.message || "Failed to send password reset email. Please try again.");
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -181,7 +223,7 @@ export default function Home() {
                 </div>
                 {mode === 'login' && (
                     <div className="text-right">
-                        <button type="button" onClick={handleForgotPassword} className="text-sm font-bold text-orange-600 hover:text-orange-700">Forgot Password?</button>
+                        <button type="button" onClick={() => setMode('forgot')} className="text-sm font-bold text-orange-600 hover:text-orange-700">Forgot Password?</button>
                     </div>
                 )}
                 <button 
@@ -192,7 +234,35 @@ export default function Home() {
                     {loading && <RefreshCcw className="h-4 w-4 animate-spin" />}
                     {mode === 'login' ? 'Login' : 'Sign Up'}
                 </button>
-                <button onClick={() => setMode('welcome')} className="w-full text-neutral-500 text-sm">Back</button>
+                <button type="button" onClick={() => window.history.back()} className="w-full text-neutral-500 text-sm">Back</button>
+            </div>
+        )}
+
+        {mode === 'forgot' && (
+            <div className="text-left space-y-4">
+                <h2 className="text-2xl font-black text-neutral-900">Reset Password</h2>
+                <p className="text-sm text-neutral-500">
+                    Enter your registered email address below, and we'll send you a secure link to reset your password.
+                </p>
+                <div className="relative">
+                    <Mail className="absolute left-3 top-3.5 h-5 w-5 text-neutral-400" />
+                    <input 
+                      type="email" 
+                      placeholder="Email Address" 
+                      value={email} 
+                      onChange={e => setEmail(e.target.value)} 
+                      className="w-full border border-neutral-200 pl-10 pr-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent" 
+                    />
+                </div>
+                <button 
+                    disabled={loading}
+                    onClick={handleForgotPassword} 
+                    className="w-full bg-orange-600 text-white font-bold py-3 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                    {loading && <RefreshCcw className="h-4 w-4 animate-spin" />}
+                    Send password reset link
+                </button>
+                <button type="button" onClick={() => window.history.back()} className="w-full text-neutral-500 text-sm font-bold hover:text-orange-600">Back to Login</button>
             </div>
         )}
 

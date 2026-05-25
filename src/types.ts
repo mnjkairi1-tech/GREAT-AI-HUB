@@ -35,6 +35,7 @@ export interface MenuItem {
   description?: string;
   price: number;
   category: string;
+  volume?: string;
   imageUrl?: string;
   isAvailable: boolean;
   stockCount: number;

@@ -675,7 +675,7 @@ function StoreCustomersTab({ restaurant }: { restaurant: Restaurant }) {
 
 export default function OwnerDashboard() {
   const initialTab = (window.location.hash.replace('#', '') || 'home') as any;
-  const [activeTab, setActiveTabRaw] = useState<'home' | 'orders' | 'menu' | 'qr' | 'settings' | 'analytics' | 'staff' | 'customers' | 'staff_analytics'>(initialTab);
+  const [activeTab, setActiveTabRaw] = useState<'home' | 'orders' | 'menu' | 'settings' | 'analytics' | 'staff' | 'customers' | 'staff_analytics'>(initialTab);
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -795,6 +795,8 @@ export default function OwnerDashboard() {
     </div>
   );
 
+  const isFoodBiz = ['hotel', 'restaurant', 'fastfood', 'fast food', 'cafe'].includes(restaurant.businessType?.toLowerCase() || '');
+
   return (
     <div className="flex min-h-screen bg-brand-bg text-brand-text lg:flex-row">
       {/* Sidebar */}
@@ -870,12 +872,12 @@ export default function OwnerDashboard() {
             </>
           )}
           
-          {canAccess('qr') && (restaurant.businessType !== 'Salon' && restaurant.businessType !== 'Clinic') && !isStaff && (
+          {isFoodBiz && (
             <NavBtn 
-              active={activeTab === 'qr'} 
-              onClick={() => setActiveTab('qr')}
-              icon={<Link className="h-5 w-5" />}
-              label="QR"
+              active={activeTab === 'recent_sales'} 
+              onClick={() => setActiveTab('recent_sales')}
+              icon={<History className="h-5 w-5" />}
+              label="Completed Orders"
             />
           )}
           {canAccess('analytics') && !isStaff && (
@@ -884,6 +886,7 @@ export default function OwnerDashboard() {
               onClick={() => setActiveTab('analytics')}
               icon={<BarChart3 className="h-5 w-5" />}
               label="Analytics"
+              className={isFoodBiz ? "hidden lg:flex" : ""}
             />
           )}
 
@@ -902,6 +905,7 @@ export default function OwnerDashboard() {
             icon={<Settings className="h-5 w-5" />}
             label="Settings"
             isLast
+            className={isFoodBiz ? "hidden lg:flex" : ""}
           />
         </nav>
       </aside>
@@ -926,12 +930,22 @@ export default function OwnerDashboard() {
             {activeTab === 'orders' && ((restaurant.businessType === 'Salon' || restaurant.businessType === 'Clinic') ? 'Appointments' : 'Live Orders')}
             {activeTab === 'menu' && ((restaurant.businessType === 'Salon' || restaurant.businessType === 'Clinic') ? 'Services' : 'Menu')}
             {activeTab === 'staff' && 'Staff'}
-            {activeTab === 'qr' && 'QR'}
             {activeTab === 'analytics' && 'Analytics'}
             {activeTab === 'settings' && 'Settings'}
             {activeTab === 'customers' && 'Udhaari Book'}
             {activeTab === 'staff_analytics' && 'Staff Analytics'}
+            {activeTab === 'recent_sales' && 'Completed Orders'}
           </h2>
+          {isFoodBiz && (
+            <div className="flex items-center gap-2 lg:hidden">
+              <button 
+                onClick={() => setActiveTab('settings')}
+                className={`p-2 rounded-xl transition-colors ${activeTab === 'settings' || activeTab === 'analytics' ? 'bg-brand-primary text-white' : 'bg-white text-neutral-500 hover:bg-neutral-50 shadow-sm border border-neutral-100'}`}
+              >
+                <Settings className="h-5 w-5" />
+              </button>
+            </div>
+          )}
         </header>
 
         <div className="mx-auto max-w-5xl">
@@ -944,7 +958,7 @@ export default function OwnerDashboard() {
           )}
           {activeTab === 'customers' && canAccess('customers') && <StoreCustomersTab restaurant={restaurant} />}
           {activeTab === 'staff' && !isStaff && <StaffManagementTab restaurant={restaurant} setRestaurant={setRestaurant} />}
-          {activeTab === 'qr' && !isStaff && canAccess('qr') && <QRTab restaurantId={restaurant.id} name={restaurant.name} businessType={restaurant.businessType} />}
+          {activeTab === 'recent_sales' && isFoodBiz && <RecentSalesTab restaurantId={restaurant.id} businessType={restaurant.businessType} />}
           {activeTab === 'analytics' && !isStaff && canAccess('analytics') && <AnalyticsTab restaurantId={restaurant.id} businessType={restaurant.businessType} />}
           {activeTab === 'staff_analytics' && canAccess('staff_analytics') && <StaffPerformanceAnalytics restaurantId={restaurant.id} staffMembers={restaurant.staffMembers || []} forceStaffView={isStaff} />}
           {activeTab === 'settings' && <SettingsTab onLogout={handleLogout} restaurant={restaurant} setRestaurant={setRestaurant} setActiveTab={setActiveTab} isStaff={isStaff} />}
@@ -954,7 +968,7 @@ export default function OwnerDashboard() {
   );
 }
 
-function HomeTab({ restaurant, setActiveTab, isStaff }: { restaurant: Restaurant, setActiveTab: (tab: 'home' | 'orders' | 'menu' | 'qr' | 'settings' | 'analytics' | 'staff' | 'staff_analytics') => void, isStaff: boolean }) {
+function HomeTab({ restaurant, setActiveTab, isStaff }: { restaurant: Restaurant, setActiveTab: (tab: 'home' | 'orders' | 'menu' | 'settings' | 'analytics' | 'staff' | 'staff_analytics') => void, isStaff: boolean }) {
   const restaurantId = restaurant.id;
   const businessType = restaurant.businessType;
   const [orders, setOrders] = useState<Order[]>([]);
@@ -1205,7 +1219,7 @@ function HomeTab({ restaurant, setActiveTab, isStaff }: { restaurant: Restaurant
   );
 }
 
-function NavBtn({ active, onClick, icon, label, isLast }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string, isLast?: boolean }) {
+function NavBtn({ active, onClick, icon, label, isLast, className }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string, isLast?: boolean, className?: string }) {
   return (
     <button
       onClick={onClick}
@@ -1214,7 +1228,8 @@ function NavBtn({ active, onClick, icon, label, isLast }: { active: boolean, onC
         active 
           ? "bg-brand-primary text-white shadow-lg shadow-brand-secondary" 
           : "text-neutral-500 hover:bg-neutral-100",
-        isLast && "lg:mt-auto"
+        isLast && "lg:mt-auto",
+        className
       )}
     >
       {icon}
@@ -2263,14 +2278,13 @@ function StaffManagementTab({ restaurant, setRestaurant }: { restaurant: Restaur
     { id: 'home', label: restaurant.businessType === 'General Store' ? 'POS Terminal' : 'Home' },
     { id: 'orders', label: (restaurant.businessType === 'Salon' || restaurant.businessType === 'Clinic') ? 'Appointments' : 'Live Orders' },
     { id: 'menu', label: (restaurant.businessType === 'Salon' || restaurant.businessType === 'Clinic') ? 'Services' : 'Menu' },
-    { id: 'qr', label: 'QR Codes', ownerOnly: true },
     { id: 'analytics', label: 'Business Analytics', ownerOnly: true },
     { id: 'customers', label: 'Udhaari Book' },
     { id: 'staff_analytics', label: 'Performance Analytics' },
     { id: 'settings', label: 'Settings' }
   ].filter(t => {
-    if (restaurant.businessType === 'General Store') return t.id !== 'qr' && t.id !== 'analytics';
-    if (restaurant.businessType === 'Salon' || restaurant.businessType === 'Clinic') return t.id !== 'qr' && t.id !== 'customers';
+    if (restaurant.businessType === 'General Store') return t.id !== 'analytics';
+    if (restaurant.businessType === 'Salon' || restaurant.businessType === 'Clinic') return t.id !== 'customers';
     return t.id !== 'customers';
   });
 
@@ -2712,7 +2726,7 @@ function SalonProductInventory({ restaurant }: { restaurant: Restaurant }) {
 
 // --- TAB: Settings ---
 // --- Component: StaffRecentOrders ---
-function StaffRecentOrders({ restaurantId }: { restaurantId: string }) {
+function StaffRecentOrders({ restaurantId, businessType }: { restaurantId: string, businessType: string }) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -2724,43 +2738,29 @@ function StaffRecentOrders({ restaurantId }: { restaurantId: string }) {
       const q = query(
         collection(db, 'orders'),
         where('restaurantId', '==', restaurantId),
-        orderBy('createdAt', 'desc'),
-        limit(20)
+        where('status', '==', 'COMPLETED')
       );
 
       unsub = onSnapshot(q, (snapshot) => {
-        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order))
+          .sort((a, b) => {
+            const getTime = (val: any) => {
+              if (val?.toDate) return val.toDate().getTime();
+              if (val) {
+                const d = new Date(val);
+                return isNaN(d.getTime()) ? 0 : d.getTime();
+              }
+              return 0;
+            };
+            return getTime(b.createdAt) - getTime(a.createdAt);
+          });
         setOrders(data);
         setLoading(false);
         setError(null);
       }, (err) => {
-        console.warn("Ordered snapshot failed fallback used:", err);
-        const fallbackQuery = query(
-          collection(db, 'orders'),
-          where('restaurantId', '==', restaurantId)
-        );
-        
-        unsub = onSnapshot(fallbackQuery, (snapshot) => {
-          const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order))
-            .sort((a, b) => {
-              const getTime = (val: any) => {
-                if (val?.toDate) return val.toDate().getTime();
-                if (val) {
-                  const d = new Date(val);
-                  return isNaN(d.getTime()) ? 0 : d.getTime();
-                }
-                return 0;
-              };
-              return getTime(b.createdAt) - getTime(a.createdAt);
-            })
-            .slice(0, 20);
-          setOrders(data);
-          setLoading(false);
-          setError(null);
-        }, (fallbackErr) => {
-          setError("Failed to load history");
-          setLoading(false);
-        });
+        console.error("Orders listener failed:", err);
+        setError("Failed to load history");
+        setLoading(false);
       });
     };
 
@@ -2786,69 +2786,67 @@ function StaffRecentOrders({ restaurantId }: { restaurantId: string }) {
       <div className="flex items-center justify-between bg-neutral-50/50 px-5 py-3 border-b border-neutral-100">
         <div className="flex items-center gap-2">
            <History className="h-4 w-4 text-neutral-400" />
-           <span className="text-xs font-black text-neutral-900 uppercase tracking-tight">Recent Sales</span>
+           <span className="text-xs font-black text-neutral-900 uppercase tracking-tight">Recent Completed Orders</span>
         </div>
-        <span className="text-[10px] font-bold text-neutral-400">Showing Last 20</span>
       </div>
 
-      <div className="divide-y divide-neutral-50">
+      <div className="overflow-x-auto w-full scrollbar-hide">
         {orders.length === 0 ? (
           <div className="py-10 text-center">
              <p className="text-xs font-medium text-neutral-400">No transactions recorded.</p>
           </div>
         ) : (
-          orders.map((order) => {
-            let date: Date;
-            try {
-              if (order.createdAt?.toDate) date = order.createdAt.toDate();
-              else if (order.createdAt) date = new Date(order.createdAt);
-              else date = new Date();
-              if (isNaN(date.getTime())) date = new Date();
-            } catch (e) {
-              date = new Date();
-            }
+          <table className="w-full text-left text-sm whitespace-nowrap">
+            <thead className="border-b border-neutral-100 text-neutral-400 bg-neutral-50/50">
+              <tr>
+                <th className="px-5 py-3 font-bold uppercase tracking-wider text-[10px]">Date</th>
+                <th className="px-5 py-3 font-bold uppercase tracking-wider text-[10px]">Customer</th>
+                <th className="px-5 py-3 font-bold uppercase tracking-wider text-[10px]">{businessType === 'Salon' ? 'Service/Table' : businessType === 'General Store' ? 'Processed By' : 'Table/Name'}</th>
+                <th className="px-5 py-3 text-right font-bold uppercase tracking-wider text-[10px]">Amount</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-50 text-neutral-600">
+              {orders.map((order) => {
+                let date: Date;
+                try {
+                  if (order.createdAt?.toDate) date = order.createdAt.toDate();
+                  else if (order.createdAt) date = new Date(order.createdAt);
+                  else date = new Date();
+                  if (isNaN(date.getTime())) date = new Date();
+                } catch (e) {
+                  date = new Date();
+                }
 
-            const staff = order.staffCode || order.tableNo || 'Owner';
-            const isCash = order.paymentMethod === 'CASH';
-
-            return (
-              <div key={order.id} className="flex items-center justify-between px-5 py-3 transition-colors hover:bg-neutral-50/30">
-                <div className="flex items-center gap-3">
-                   <div className={`flex h-8 w-8 items-center justify-center rounded-xl text-[10px] font-black ${isCash ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'}`}>
-                      {isCash ? 'CA' : 'CR'}
-                   </div>
-                   <div className="space-y-0.5">
-                      <p className="text-xs font-bold text-neutral-900 leading-none truncate max-w-[100px]">
-                        {order.customerName || 'Walk-in'}
-                      </p>
-                      <div className="flex items-center gap-1.5 text-[9px] font-black text-neutral-400 uppercase tracking-tighter">
-                         <span>{staff === 'Owner' ? 'OWNER' : `ID: ${staff}`}</span>
-                         <span>•</span>
-                         <span>{date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                      </div>
-                   </div>
-                </div>
-                <div className="text-right">
-                   <p className="text-sm font-black text-neutral-900 tracking-tight">
-                     ₹{order.totalAmount?.toLocaleString()}
-                   </p>
-                   <p className={`text-[8px] font-black uppercase tracking-widest ${order.status === 'COMPLETED' ? 'text-emerald-500' : 'text-red-500'}`}>
-                     {order.status}
-                   </p>
-                </div>
-              </div>
-            );
-          })
+                return (
+                  <tr key={order.id} className="transition-colors hover:bg-neutral-50/30">
+                    <td className="px-5 py-4">{format(date, 'MMM dd, h:mm a')}</td>
+                    <td className="px-5 py-4 font-medium text-neutral-900">{order.customerName || 'Walk-in'}</td>
+                    <td className="px-5 py-4">{(businessType === 'Salon' || businessType === 'General Store') ? (!order.tableNo || order.tableNo === 'Unknown' ? 'Owner' : `Code: ${order.tableNo}`) : `Table ${order.tableNo}`}</td>
+                    <td className="px-5 py-4 text-right font-black text-neutral-900">{formatCurrency(order.totalAmount || 0)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         )}
       </div>
     </div>
   );
 }
 
-function SettingsTab({ onLogout, restaurant, setRestaurant, setActiveTab, isStaff }: { onLogout: () => void, restaurant: Restaurant, setRestaurant: React.Dispatch<React.SetStateAction<Restaurant | null>>, setActiveTab: (tab: 'home' | 'orders' | 'menu' | 'qr' | 'settings' | 'analytics' | 'staff' | 'staff_analytics') => void, isStaff: boolean }) {
+function RecentSalesTab({ restaurantId, businessType }: { restaurantId: string, businessType: string }) {
+  return (
+    <div className="mx-auto max-w-4xl">
+      <StaffRecentOrders restaurantId={restaurantId} businessType={businessType} />
+    </div>
+  );
+}
+
+function SettingsTab({ onLogout, restaurant, setRestaurant, setActiveTab, isStaff }: { onLogout: () => void, restaurant: Restaurant, setRestaurant: React.Dispatch<React.SetStateAction<Restaurant | null>>, setActiveTab: (tab: 'home' | 'orders' | 'menu' | 'settings' | 'analytics' | 'staff' | 'staff_analytics') => void, isStaff: boolean }) {
   const [businessType, setBusinessType] = useState(restaurant.businessType);
   const [updating, setUpdating] = useState(false);
   const [showAccountSettings, setShowAccountSettings] = useState(false);
+  const [showThemes, setShowThemes] = useState(false);
   const navigate = useNavigate();
 
   const handleUpdateType = async (newType: string) => {
@@ -2911,7 +2909,23 @@ function SettingsTab({ onLogout, restaurant, setRestaurant, setActiveTab, isStaf
 
   return (
     <div className="space-y-8 max-w-2xl">
-      <StaffRecentOrders restaurantId={restaurant.id} />
+      {!isStaff && (
+        <div className="lg:hidden">
+          <button 
+            onClick={() => setActiveTab('analytics')} 
+            className="flex items-center gap-4 rounded-3xl bg-neutral-900 p-6 w-full shadow-lg hover:bg-neutral-800 transition-colors"
+          >
+             <div className="flex bg-neutral-800 rounded-2xl h-14 w-14 items-center justify-center">
+                <BarChart3 className="h-6 w-6 text-white" />
+             </div>
+             <div className="text-left flex flex-col justify-center">
+               <span className="font-bold text-lg text-white">Business Analytics</span>
+               <span className="text-xs text-neutral-400 mt-1">View your stats and reports</span>
+             </div>
+          </button>
+        </div>
+      )}
+
       {!isStaff && (
         <div className="rounded-3xl border border-neutral-100 bg-white p-6 shadow-sm sm:p-8">
           <button 
@@ -2924,6 +2938,15 @@ function SettingsTab({ onLogout, restaurant, setRestaurant, setActiveTab, isStaf
           
           {showAccountSettings && (
             <div className="mt-6 space-y-6 pt-6 border-t border-neutral-100">
+              <div className="mb-6">
+                <label className="mb-2 block text-sm font-medium text-neutral-700">Account Email</label>
+                <input
+                  type="text"
+                  value={auth.currentUser?.email || ''}
+                  readOnly
+                  className="w-full rounded-xl border border-neutral-100 bg-neutral-50 px-4 py-3 text-neutral-500 outline-none"
+                />
+              </div>
               <div className="mb-6">
                 <label className="mb-2 block text-sm font-medium text-neutral-700">Business Name</label>
                 <div className="flex gap-2">
@@ -3005,62 +3028,70 @@ function SettingsTab({ onLogout, restaurant, setRestaurant, setActiveTab, isStaf
 
       {!isStaff && (
         <div className="rounded-3xl border border-brand-border bg-brand-card p-6 shadow-sm sm:p-8">
-          <h3 className="mb-6 text-lg font-bold text-brand-text flex items-center gap-2">
-            <Palette className="h-5 w-5 text-brand-primary" />
-            Visual Themes
-          </h3>
+          <button 
+            onClick={() => setShowThemes(!showThemes)}
+            className="flex w-full items-center justify-between outline-none"
+          >
+            <h3 className="text-lg font-bold text-brand-text flex items-center gap-2">
+              <Palette className="h-5 w-5 text-brand-primary" />
+              Visual Themes
+            </h3>
+            <ChevronDown className={`h-5 w-5 text-neutral-500 transition-transform ${showThemes ? 'rotate-180' : ''}`} />
+          </button>
           
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {Object.values(THEMES).map((t) => (
-              <button
-                key={t.id}
-                disabled={updating}
-                onClick={async () => {
-                  setUpdating(true);
-                  try {
-                    await updateDoc(doc(db, 'restaurants', restaurant.id), { theme: t.id });
-                    setRestaurant({ ...restaurant, theme: t.id as any });
-                  } catch (e) {
-                    handleFirestoreError(e, OperationType.UPDATE, 'restaurants');
-                  }
-                  setUpdating(false);
-                }}
-                className={`relative overflow-hidden rounded-2xl border-2 p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${restaurant.theme === t.id || (!restaurant.theme && t.id === 'classic-orange') ? 'border-brand-primary' : 'border-brand-border'}`}
-                style={{ 
-                  backgroundColor: t.bgHex,
-                  backdropFilter: t.id === 'glass-morphic' ? 'blur(10px)' : 'none'
-                }}
-              >
-                {t.id === 'noir-dark' && <Moon className="absolute -right-1 -top-1 h-8 w-8 text-white opacity-20" />}
-                {t.id === 'glass-morphic' && <Layers className="absolute -right-1 -top-1 h-8 w-8 text-pink-400 opacity-30 animate-pulse" />}
-                {t.id === 'classic-orange' && <Sparkles className="absolute -right-1 -top-1 h-8 w-8 text-orange-400 opacity-30" />}
-                {t.id === 'cute-marshmallow' && <Star className="absolute -right-1 -top-1 h-8 w-8 text-pink-400 opacity-30 animate-pulse" />}
-                {t.id === 'matcha-cafe' && <Zap className="absolute -right-1 -top-1 h-8 w-8 text-emerald-400 opacity-30" />}
-                
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="h-10 w-10 rounded-xl flex items-center justify-center shadow-sm" style={{ backgroundColor: t.primaryHex, border: t.id === 'glass-morphic' ? '1px solid rgba(255,255,255,0.2)' : 'none' }}>
-                    <div className="h-4 w-4 rounded-full bg-white opacity-40"></div>
+          {showThemes && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6 pt-6 border-t border-brand-border/30">
+              {Object.values(THEMES).map((t) => (
+                <button
+                  key={t.id}
+                  disabled={updating}
+                  onClick={async () => {
+                    setUpdating(true);
+                    try {
+                      await updateDoc(doc(db, 'restaurants', restaurant.id), { theme: t.id });
+                      setRestaurant({ ...restaurant, theme: t.id as any });
+                    } catch (e) {
+                      handleFirestoreError(e, OperationType.UPDATE, 'restaurants');
+                    }
+                    setUpdating(false);
+                  }}
+                  className={`relative overflow-hidden rounded-2xl border-2 p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${restaurant.theme === t.id || (!restaurant.theme && t.id === 'classic-orange') ? 'border-brand-primary' : 'border-brand-border'}`}
+                  style={{ 
+                    backgroundColor: t.bgHex,
+                    backdropFilter: t.id === 'glass-morphic' ? 'blur(10px)' : 'none'
+                  }}
+                >
+                  {t.id === 'noir-dark' && <Moon className="absolute -right-1 -top-1 h-8 w-8 text-white opacity-20" />}
+                  {t.id === 'glass-morphic' && <Layers className="absolute -right-1 -top-1 h-8 w-8 text-pink-400 opacity-30 animate-pulse" />}
+                  {t.id === 'classic-orange' && <Sparkles className="absolute -right-1 -top-1 h-8 w-8 text-orange-400 opacity-30" />}
+                  {t.id === 'cute-marshmallow' && <Star className="absolute -right-1 -top-1 h-8 w-8 text-pink-400 opacity-30 animate-pulse" />}
+                  {t.id === 'matcha-cafe' && <Zap className="absolute -right-1 -top-1 h-8 w-8 text-emerald-400 opacity-30" />}
+                  
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="h-10 w-10 rounded-xl flex items-center justify-center shadow-sm" style={{ backgroundColor: t.primaryHex, border: t.id === 'glass-morphic' ? '1px solid rgba(255,255,255,0.2)' : 'none' }}>
+                      <div className="h-4 w-4 rounded-full bg-white opacity-40"></div>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black uppercase tracking-tight" style={{ color: t.textHex }}>{t.name}</h4>
+                      <p className="text-[10px] opacity-60" style={{ color: t.textHex }}>{t.description}</p>
+                    </div>
                   </div>
-                  <div>
-                    <h4 className="text-sm font-black uppercase tracking-tight" style={{ color: t.textHex }}>{t.name}</h4>
-                    <p className="text-[10px] opacity-60" style={{ color: t.textHex }}>{t.description}</p>
+                  
+                  <div className="flex gap-1.5 opacity-80">
+                     <div className="h-1.5 flex-1 rounded-full" style={{ backgroundColor: t.primaryHex }}></div>
+                     <div className="h-1.5 flex-1 rounded-full" style={{ backgroundColor: t.secondaryHex }}></div>
+                     <div className="h-1.5 flex-1 rounded-full" style={{ backgroundColor: t.primaryHex, opacity: 0.3 }}></div>
                   </div>
-                </div>
-                
-                <div className="flex gap-1.5 opacity-80">
-                   <div className="h-1.5 flex-1 rounded-full" style={{ backgroundColor: t.primaryHex }}></div>
-                   <div className="h-1.5 flex-1 rounded-full" style={{ backgroundColor: t.secondaryHex }}></div>
-                   <div className="h-1.5 flex-1 rounded-full" style={{ backgroundColor: t.primaryHex, opacity: 0.3 }}></div>
-                </div>
 
-                {(restaurant.theme === t.id || (!restaurant.theme && t.id === 'classic-orange')) && (
-                  <div className="absolute right-3 bottom-3 h-5 w-5 rounded-full bg-brand-primary flex items-center justify-center text-white shadow-lg">
-                    <Check className="h-3 w-3" />
-                  </div>
-                )}
-              </button>
-            ))}
-          </div>
+                  {(restaurant.theme === t.id || (!restaurant.theme && t.id === 'classic-orange')) && (
+                    <div className="absolute right-3 bottom-3 h-5 w-5 rounded-full bg-brand-primary flex items-center justify-center text-white shadow-lg">
+                      <Check className="h-3 w-3" />
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -3242,41 +3273,43 @@ function AnalyticsTab({ restaurantId, businessType }: { restaurantId: string, bu
         )}
       </div>
       
-      <div className="rounded-3xl border border-neutral-100 bg-white p-6 shadow-sm mt-8 xl:col-span-2 overflow-hidden flex flex-col">
-          <h3 className="mb-6 text-lg font-bold text-neutral-900">Recent Completed Orders</h3>
-          <div className="overflow-x-auto w-full scrollbar-hide">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b border-neutral-100 text-neutral-400">
-                <tr>
-                  <th className="pb-3 pr-4 font-bold uppercase tracking-wider text-xs whitespace-nowrap">Date</th>
-                  <th className="pb-3 pr-4 font-bold uppercase tracking-wider text-xs whitespace-nowrap">Customer</th>
-                  <th className="pb-3 pr-4 font-bold uppercase tracking-wider text-xs whitespace-nowrap">{businessType === 'Salon' ? 'Service/Table' : businessType === 'General Store' ? 'Processed By' : 'Table/Name'}</th>
-                  <th className="pb-3 text-right font-bold uppercase tracking-wider text-xs whitespace-nowrap">Amount</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-50 text-neutral-600">
-                {orders.sort((a,b) => {
-                   const dA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
-                   const dB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
-                   return dB.getTime() - dA.getTime();
-                }).slice(0, 15).map(order => {
-                  const dateInfo = order.createdAt?.toDate ? order.createdAt.toDate() : new Date(order.createdAt);
-                  return (
-                    <tr key={order.id}>
-                      <td className="py-4 pr-4 whitespace-nowrap">{dateInfo ? format(dateInfo, 'MMM dd, h:mm a') : '-'}</td>
-                      <td className="py-4 pr-4 font-medium text-neutral-900 whitespace-nowrap">{order.customerName}</td>
-                      <td className="py-4 pr-4 whitespace-nowrap">{(businessType === 'Salon' || businessType === 'General Store') ? (!order.tableNo || order.tableNo === 'Unknown' ? 'Owner' : `Code: ${order.tableNo}`) : `Table ${order.tableNo}`}</td>
-                      <td className="py-4 text-right font-black text-neutral-900 whitespace-nowrap">{formatCurrency(order.totalAmount)}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-            {orders.length === 0 && (
-              <div className="p-10 text-center text-sm font-bold text-neutral-400">No completed orders yet.</div>
-            )}
-          </div>
-      </div>
+      {!['hotel', 'restaurant', 'fastfood', 'fast food', 'cafe'].includes(businessType.toLowerCase()) && (
+        <div className="rounded-3xl border border-neutral-100 bg-white p-6 shadow-sm mt-8 xl:col-span-2 overflow-hidden flex flex-col">
+            <h3 className="mb-6 text-lg font-bold text-neutral-900">Recent Completed Orders</h3>
+            <div className="overflow-x-auto w-full scrollbar-hide">
+              <table className="w-full text-left text-sm">
+                <thead className="border-b border-neutral-100 text-neutral-400">
+                  <tr>
+                    <th className="pb-3 pr-4 font-bold uppercase tracking-wider text-xs whitespace-nowrap">Date</th>
+                    <th className="pb-3 pr-4 font-bold uppercase tracking-wider text-xs whitespace-nowrap">Customer</th>
+                    <th className="pb-3 pr-4 font-bold uppercase tracking-wider text-xs whitespace-nowrap">{businessType === 'Salon' ? 'Service/Table' : businessType === 'General Store' ? 'Processed By' : 'Table/Name'}</th>
+                    <th className="pb-3 text-right font-bold uppercase tracking-wider text-xs whitespace-nowrap">Amount</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-50 text-neutral-600">
+                  {orders.sort((a,b) => {
+                     const dA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
+                     const dB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
+                     return dB.getTime() - dA.getTime();
+                  }).slice(0, 15).map(order => {
+                    const dateInfo = order.createdAt?.toDate ? order.createdAt.toDate() : new Date(order.createdAt);
+                    return (
+                      <tr key={order.id}>
+                        <td className="py-4 pr-4 whitespace-nowrap">{dateInfo ? format(dateInfo, 'MMM dd, h:mm a') : '-'}</td>
+                        <td className="py-4 pr-4 font-medium text-neutral-900 whitespace-nowrap">{order.customerName}</td>
+                        <td className="py-4 pr-4 whitespace-nowrap">{(businessType === 'Salon' || businessType === 'General Store') ? (!order.tableNo || order.tableNo === 'Unknown' ? 'Owner' : `Code: ${order.tableNo}`) : `Table ${order.tableNo}`}</td>
+                        <td className="py-4 text-right font-black text-neutral-900 whitespace-nowrap">{formatCurrency(order.totalAmount)}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+              {orders.length === 0 && (
+                <div className="p-10 text-center text-sm font-bold text-neutral-400">No completed orders yet.</div>
+              )}
+            </div>
+        </div>
+      )}
     </div>
   );
 }

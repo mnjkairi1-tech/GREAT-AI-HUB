@@ -627,48 +627,47 @@ function StoreCustomersTab({ restaurant }: { restaurant: Restaurant }) {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-sm flex flex-col gap-4">
-        <div className="flex items-center justify-between">
+      <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-sm flex flex-col gap-5">
+        <div className="flex items-start gap-3">
+          <BookOpen className="h-6 w-6 text-blue-500 mt-0.5" />
           <div>
-            <h2 className="text-xl font-bold text-neutral-900 flex items-center gap-2">
-              <BookOpen className="text-blue-500" /> Udhaari Book
-            </h2>
-            <p className="text-sm text-neutral-500 mt-1">View and manage customer credit</p>
+            <h3 className="text-lg font-bold text-neutral-900">Udhaari Book</h3>
+            <p className="text-xs font-semibold text-neutral-400 mt-0.5">View and manage customer credit</p>
           </div>
         </div>
-        <div className="flex items-center bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-3">
-          <Search className="h-5 w-5 text-neutral-400 mr-2" />
+        <div className="flex items-center bg-neutral-50 border border-neutral-100 rounded-2xl px-4 py-3.5">
+          <Search className="h-5 w-5 text-neutral-400 mr-3" />
           <input
             type="text"
             placeholder="Search by name or code..."
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            className="w-full bg-transparent border-none focus:outline-none focus:ring-0 text-neutral-900 placeholder:text-neutral-400 font-medium"
+            className="w-full bg-transparent border-none focus:outline-none focus:ring-0 text-neutral-900 placeholder:text-neutral-400 font-medium text-sm"
           />
         </div>
       </div>
 
-      <div className="bg-white rounded-3xl border border-neutral-100 p-2 shadow-sm">
+      <div className="bg-white rounded-3xl border border-neutral-100 shadow-sm overflow-hidden">
         {loading ? (
-          <p className="p-4 text-sm text-neutral-500">Loading customers...</p>
+          <p className="p-6 text-sm text-neutral-500">Loading customers...</p>
         ) : filteredCustomers.length === 0 ? (
-          <p className="p-4 text-sm text-neutral-500">No customers found.</p>
+          <p className="p-6 text-sm text-neutral-500">No customers found.</p>
         ) : (
           <div className="divide-y divide-neutral-100">
             {filteredCustomers.map(cust => (
               <button 
                 key={cust.id} 
                 onClick={() => setSelectedCust(cust)}
-                className="w-full flex items-center justify-between p-4 hover:bg-neutral-50 transition-colors first:rounded-t-2xl last:rounded-b-2xl"
+                className="w-full flex items-center justify-between py-5 px-6 hover:bg-neutral-50/50 transition-colors text-left"
               >
-                <div className="text-left">
-                  <p className="font-bold text-neutral-900">{cust.name}</p>
-                  <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 mt-1">{cust.code}</p>
+                <div>
+                  <h4 className="font-bold text-neutral-900 text-sm sm:text-[15px]">{cust.name}</h4>
+                  <p className="text-xs text-neutral-400 font-medium mt-0.5">{cust.code}</p>
                 </div>
-                <div className="text-right flex items-center gap-3">
+                <div className="flex items-center gap-4">
                   <div className="text-right">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-orange-500 mb-1">Due</p>
-                    <p className="font-bold text-orange-600">₹{cust.creditBalance}</p>
+                    <p className="text-[9px] font-black uppercase tracking-widest text-brand-primary">Due</p>
+                    <p className="text-base sm:text-lg font-bold text-brand-primary mt-0.5">₹{cust.creditBalance}</p>
                   </div>
                   <ChevronRight className="h-5 w-5 text-neutral-300" />
                 </div>
@@ -930,7 +929,7 @@ export default function OwnerDashboard() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto p-4 pb-24 md:p-10 md:pb-10">
-        <div className="w-full">
+        <div className="mx-auto w-full max-w-4xl">
           <div className="mb-6 md:hidden">
             <select 
               value={restaurant.id}

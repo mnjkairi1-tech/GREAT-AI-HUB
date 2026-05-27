@@ -124,7 +124,7 @@ export default function CustomerMenu() {
       const items = mSnapshot.docs.map(iDoc => ({ id: iDoc.id, ...iDoc.data() } as MenuItem));
       setMenuItems(items);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, qPath);
+      console.error("Error listening to menuItems:", error);
     });
 
     return unsub;
@@ -139,7 +139,7 @@ export default function CustomerMenu() {
         setOrderSent({ id: snap.id, ...snap.data() } as Order);
       }
     }, (error) => {
-      handleFirestoreError(error, OperationType.GET, path);
+      console.error("Error listening to order status:", error);
     });
     return unsub;
   }, [orderSent?.id]);
@@ -287,7 +287,8 @@ export default function CustomerMenu() {
       setCart([]);
       setIsCheckoutOpen(false);
     } catch (e) {
-      handleFirestoreError(e, OperationType.CREATE, qPath);
+      console.error("Failed to place order: ", e);
+      alert("Order placement failed! Please check your internet connection and try again. (" + (e instanceof Error ? e.message : "Database Error") + ")");
     } finally {
       setLoading(false);
     }
@@ -309,65 +310,69 @@ export default function CustomerMenu() {
     <div className="min-h-screen bg-brand-bg text-brand-text pb-32 font-sans">
       {/* Header */}
       <header className="sticky top-0 z-40 bg-brand-card/80 p-6 backdrop-blur-lg border-b border-brand-border">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold tracking-tight">{restaurant.name}</h1>
-            <p className="text-xs font-semibold text-brand-primary">{(restaurant?.businessType === 'Salon' || restaurant?.businessType === 'Clinic') ? 'STAFF CODE' : 'TABLE'} {tableNo}</p>
+        <div className="max-w-3xl mx-auto w-full">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-xl font-bold tracking-tight">{restaurant.name}</h1>
+              <p className="text-xs font-semibold text-brand-primary">{(restaurant?.businessType === 'Salon' || restaurant?.businessType === 'Clinic') ? 'STAFF CODE' : 'TABLE'} {tableNo}</p>
+            </div>
+            <div className="rounded-full bg-brand-bg p-2 border border-brand-border">
+              <Utensils className="h-5 w-5 opacity-40" />
+            </div>
           </div>
-          <div className="rounded-full bg-brand-bg p-2 border border-brand-border">
-            <Utensils className="h-5 w-5 opacity-40" />
+          
+          {/* Categories */}
+          <div className="mt-6 flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+            {categories.map(cat => (
+              <button
+                key={cat}
+                onClick={() => setActiveCategory(cat)}
+                className={cn(
+                  "whitespace-nowrap rounded-full px-5 py-2 text-sm font-black transition-all",
+                  activeCategory === cat 
+                    ? "bg-brand-primary text-white shadow-lg" 
+                    : "bg-brand-card text-brand-text/50 border border-brand-border"
+                )}
+              >
+                {cat}
+              </button>
+            ))}
           </div>
-        </div>
-        
-        {/* Categories */}
-        <div className="mt-6 flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-          {categories.map(cat => (
-            <button
-              key={cat}
-              onClick={() => setActiveCategory(cat)}
-              className={cn(
-                "whitespace-nowrap rounded-full px-5 py-2 text-sm font-black transition-all",
-                activeCategory === cat 
-                  ? "bg-brand-primary text-white shadow-lg" 
-                  : "bg-brand-card text-brand-text/50 border border-brand-border"
-              )}
-            >
-              {cat}
-            </button>
-          ))}
-        </div>
-        <div className="mt-4">
-           <input 
-             type="text"
-             placeholder="Search items..."
-             value={searchTerm}
-             onChange={(e) => setSearchTerm(e.target.value)}
-             className="w-full rounded-2xl border border-brand-border bg-brand-card px-5 py-3 text-sm outline-none focus:border-brand-primary"
-          />
+          <div className="mt-4">
+             <input 
+               type="text"
+               placeholder="Search items..."
+               value={searchTerm}
+               onChange={(e) => setSearchTerm(e.target.value)}
+               className="w-full rounded-2xl border border-brand-border bg-brand-card px-5 py-3 text-sm outline-none focus:border-brand-primary"
+            />
+          </div>
         </div>
       </header>
 
       {/* Menu List */}
       <main className="p-6">
-        {popularItems.length > 0 && activeCategory === 'All' && (
-          <div className="mb-8">
-            <h2 className="mb-4 text-xl font-black text-brand-text flex items-center gap-2">🔥 Popular / Trending</h2>
+        <div className="max-w-3xl mx-auto w-full">
+          {popularItems.length > 0 && activeCategory === 'All' && (
+            <div className="mb-8">
+              <h2 className="mb-4 text-xl font-black text-brand-text flex items-center gap-2">🔥 Popular / Trending</h2>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {popularItems.map(item => (
+                  <MenuItemCard key={item.id} item={item} cart={cart} updateCart={updateCart} businessType={restaurant?.businessType} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="mb-4">
+             {activeCategory === 'All' && filteredItems.length > 0 && popularItems.length > 0 && (
+                <h2 className="text-xl font-black text-brand-text mb-4">All Items</h2>
+             )}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {popularItems.map(item => (
+              {filteredItems.map(item => (
                 <MenuItemCard key={item.id} item={item} cart={cart} updateCart={updateCart} businessType={restaurant?.businessType} />
               ))}
             </div>
-          </div>
-        )}
-
-        <div className="mb-4">
-           {activeCategory === 'All' && filteredItems.length > 0 && popularItems.length > 0 && (
-              <h2 className="text-xl font-black text-brand-text mb-4">All Items</h2>
-           )}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {filteredItems.map(item => (
-              <MenuItemCard key={item.id} item={item} cart={cart} updateCart={updateCart} businessType={restaurant?.businessType} />
-            ))}
           </div>
         </div>
       </main>

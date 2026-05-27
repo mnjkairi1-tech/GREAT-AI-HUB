@@ -88,9 +88,10 @@ service cloud.firestore {
 
     match /orders/{orderId} {
       allow create: if isValidOrder(incoming());
-      // For listing orders, strictly enforce ownership. 
-      // Note: isRestaurantOwnerOrStaff uses get(), which is valid for list queries if optimized by query filters.
-      allow read: if isSignedIn() && isRestaurantOwnerOrStaff(existing().restaurantId); 
+      // Allow anybody with the safe, long, auto-generated secure ID to fetch/listen to their single order (get)
+      allow get: if true;
+      // Listing orders is restricted to logged-in restaurant owners and staff
+      allow list: if isSignedIn() && isRestaurantOwnerOrStaff(existing().restaurantId); 
       allow update: if (isSignedIn() && isRestaurantOwnerOrStaff(existing().restaurantId) && (
         // Only allow updating status and updatedAt
         incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']) &&

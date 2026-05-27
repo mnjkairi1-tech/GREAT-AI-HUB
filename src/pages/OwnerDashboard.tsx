@@ -683,7 +683,7 @@ function StoreCustomersTab({ restaurant }: { restaurant: Restaurant }) {
 
 export default function OwnerDashboard() {
   const initialTab = (window.location.hash.replace('#', '') || 'home') as any;
-  const [activeTab, setActiveTabRaw] = useState<'home' | 'orders' | 'menu' | 'settings' | 'analytics' | 'staff' | 'customers' | 'staff_analytics'>(initialTab);
+  const [activeTab, setActiveTabRaw] = useState<'home' | 'orders' | 'menu' | 'settings' | 'analytics' | 'staff' | 'customers' | 'staff_analytics' | 'qr'>(initialTab);
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -807,23 +807,31 @@ export default function OwnerDashboard() {
   const isFoodBiz = ['hotel', 'restaurant', 'fastfood', 'fast food', 'cafe'].includes(restaurant.businessType?.toLowerCase() || '');
 
   return (
-    <div className="flex min-h-screen bg-brand-bg text-brand-text lg:flex-row">
+    <div className="flex min-h-screen bg-neutral-50 text-neutral-900 md:flex-row">
       {/* Sidebar */}
-      <aside className="fixed bottom-0 z-50 flex w-full border-t border-brand-border bg-brand-card p-2 lg:relative lg:bottom-auto lg:z-0 lg:w-64 lg:flex-col lg:border-r lg:border-t-0 lg:p-6 shadow-2xl lg:shadow-none">
-        <div className="hidden lg:mb-10 lg:block">
-          <select 
-            value={restaurant.id}
-            onChange={(e) => handleSwitchRestaurant(e.target.value)}
-            className="w-full text-xl font-bold text-brand-primary bg-transparent border-none outline-none cursor-pointer truncate hover:opacity-80"
-          >
-            {allRestaurants.map(r => (
-              <option key={r.id} value={r.id} className="text-base bg-brand-card text-brand-text">{r.name}</option>
-            ))}
-          </select>
-          <p className="text-[10px] font-black uppercase tracking-widest text-brand-text/40 mt-1">Merchant Dashboard</p>
+      <aside className="fixed bottom-0 z-50 flex w-full border-t border-brand-border bg-white p-2 md:relative md:bottom-auto md:z-0 md:w-64 md:flex-col md:border-r md:border-t-0 md:p-6 shadow-xl md:shadow-none">
+        <div className="hidden md:mb-8 md:block">
+          <div className="relative group">
+            <select 
+              value={restaurant.id}
+              onChange={(e) => handleSwitchRestaurant(e.target.value)}
+              className="w-full appearance-none pr-8 text-xl font-black text-neutral-900 bg-transparent border-none outline-none cursor-pointer truncate hover:text-brand-primary transition-colors"
+            >
+              {allRestaurants.map(r => (
+                <option key={r.id} value={r.id} className="text-base bg-white text-neutral-900 font-semibold">{r.name}</option>
+              ))}
+            </select>
+            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center text-neutral-500 group-hover:text-brand-primary transition-colors">
+              <ChevronDown className="h-4 w-4" />
+            </div>
+          </div>
+          <p className="text-[9px] font-black uppercase tracking-widest text-neutral-400 mt-1.5 flex items-center gap-1.5">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            Merchant Dashboard
+          </p>
         </div>
 
-        <nav className="flex w-full justify-around gap-2 lg:flex-col lg:justify-start">
+        <nav className="flex w-full justify-around gap-2 md:flex-col md:justify-start">
           {canAccess('home') && (
             <NavBtn 
               active={activeTab === 'home'} 
@@ -887,7 +895,7 @@ export default function OwnerDashboard() {
               onClick={() => setActiveTab('analytics')}
               icon={<BarChart3 className="h-5 w-5" />}
               label="Analytics"
-              className={isFoodBiz ? "hidden lg:flex" : ""}
+              className=""
             />
           )}
           
@@ -915,63 +923,67 @@ export default function OwnerDashboard() {
             icon={<Settings className="h-5 w-5" />}
             label="Settings"
             isLast
-            className={isFoodBiz ? "hidden lg:flex" : ""}
+            className=""
           />
         </nav>
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto p-4 pb-24 lg:p-10 lg:pb-10">
-        <div className="mb-6 lg:hidden">
-          <select 
-            value={restaurant.id}
-            onChange={(e) => handleSwitchRestaurant(e.target.value)}
-            className="w-full text-xl font-bold text-orange-600 bg-transparent border-none outline-none cursor-pointer truncate hover:text-orange-700"
-          >
-            {allRestaurants.map(r => (
-              <option key={r.id} value={r.id} className="text-base text-neutral-900">{r.name}</option>
-            ))}
-          </select>
-          <p className="text-xs text-neutral-400 mt-1">Merchant Dashboard</p>
-        </div>
-        <header className="mb-8 flex items-center justify-between">
-          <h2 className="text-2xl font-bold text-neutral-900 capitalize">
-            {activeTab === 'home' && 'Home'}
-            {activeTab === 'orders' && ((restaurant.businessType === 'Salon' || restaurant.businessType === 'Clinic') ? 'Appointments' : 'Live Orders')}
-            {activeTab === 'menu' && ((restaurant.businessType === 'Salon' || restaurant.businessType === 'Clinic') ? 'Services' : 'Menu')}
-            {activeTab === 'staff' && 'Staff'}
-            {activeTab === 'analytics' && 'Analytics'}
-            {activeTab === 'settings' && 'Settings'}
-            {activeTab === 'customers' && 'Udhaari Book'}
-            {activeTab === 'staff_analytics' && 'Staff Analytics'}
-            {activeTab === 'recent_sales' && 'Completed Orders'}
-          </h2>
-          {isFoodBiz && (
-            <div className="flex items-center gap-2 lg:hidden">
-              <button 
-                onClick={() => setActiveTab('settings')}
-                className={`p-2 rounded-xl transition-colors ${activeTab === 'settings' || activeTab === 'analytics' ? 'bg-brand-primary text-white' : 'bg-white text-neutral-500 hover:bg-neutral-50 shadow-sm border border-neutral-100'}`}
-              >
-                <Settings className="h-5 w-5" />
-              </button>
-            </div>
-          )}
-        </header>
+      <main className="flex-1 overflow-y-auto p-4 pb-24 md:p-10 md:pb-10">
+        <div className="w-full">
+          <div className="mb-6 md:hidden">
+            <select 
+              value={restaurant.id}
+              onChange={(e) => handleSwitchRestaurant(e.target.value)}
+              className="w-full text-xl font-bold text-brand-primary bg-transparent border-none outline-none cursor-pointer truncate hover:opacity-80"
+            >
+              {allRestaurants.map(r => (
+                <option key={r.id} value={r.id} className="text-base text-neutral-900">{r.name}</option>
+              ))}
+            </select>
+            <p className="text-xs text-neutral-400 mt-1">Merchant Dashboard</p>
+          </div>
+          <header className="mb-8 flex items-center justify-between">
+            <h2 className="text-2xl font-bold text-neutral-900 capitalize">
+              {activeTab === 'home' && 'Home'}
+              {activeTab === 'orders' && ((restaurant.businessType === 'Salon' || restaurant.businessType === 'Clinic') ? 'Appointments' : 'Live Orders')}
+              {activeTab === 'menu' && ((restaurant.businessType === 'Salon' || restaurant.businessType === 'Clinic') ? 'Services' : 'Menu')}
+              {activeTab === 'staff' && 'Staff'}
+              {activeTab === 'analytics' && 'Analytics'}
+              {activeTab === 'settings' && 'Settings'}
+              {activeTab === 'customers' && 'Udhaari Book'}
+              {activeTab === 'staff_analytics' && 'Staff Analytics'}
+              {activeTab === 'recent_sales' && 'Completed Orders'}
+              {activeTab === 'qr' && 'QR Management'}
+            </h2>
+            {isFoodBiz && (
+              <div className="flex items-center gap-2 md:hidden">
+                <button 
+                  onClick={() => setActiveTab('settings')}
+                  className={`p-2 rounded-xl transition-colors ${activeTab === 'settings' || activeTab === 'analytics' ? 'bg-brand-primary text-white' : 'bg-white text-neutral-500 hover:bg-neutral-50 shadow-sm border border-neutral-100'}`}
+                >
+                  <Settings className="h-5 w-5" />
+                </button>
+              </div>
+            )}
+          </header>
 
-        <div className="mx-auto max-w-5xl">
-          {activeTab === 'home' && restaurant.businessType === 'General Store' ? <GeneralStorePos restaurant={restaurant} isStaff={isStaff} /> : activeTab === 'home' && <HomeTab restaurant={restaurant} setActiveTab={setActiveTab} isStaff={isStaff} />}
-          {activeTab !== 'home' && restaurant.businessType === 'General Store' && (activeTab === 'orders' || activeTab === 'menu') ? null : (
-            <>
-              {activeTab === 'orders' && canAccess('orders') && <OrdersTab restaurantId={restaurant.id} businessType={restaurant.businessType} />}
-              {activeTab === 'menu' && canAccess('menu') && <MenuTab restaurantId={restaurant.id} businessType={restaurant.businessType} />}
-            </>
-          )}
-          {activeTab === 'customers' && canAccess('customers') && <StoreCustomersTab restaurant={restaurant} />}
-          {activeTab === 'staff' && !isStaff && <StaffManagementTab restaurant={restaurant} setRestaurant={setRestaurant} />}
-          {activeTab === 'recent_sales' && (isFoodBiz || restaurant.businessType === 'General Store') && <RecentSalesTab restaurantId={restaurant.id} businessType={restaurant.businessType} staffMembers={restaurant.staffMembers || []} />}
-          {activeTab === 'analytics' && !isStaff && canAccess('analytics') && <AnalyticsTab restaurantId={restaurant.id} businessType={restaurant.businessType} staffMembers={restaurant.staffMembers || []} />}
-          {activeTab === 'staff_analytics' && canAccess('staff_analytics') && <StaffPerformanceAnalytics restaurantId={restaurant.id} staffMembers={restaurant.staffMembers || []} forceStaffView={isStaff} />}
-          {activeTab === 'settings' && <SettingsTab onLogout={handleLogout} restaurant={restaurant} setRestaurant={setRestaurant} setActiveTab={setActiveTab} isStaff={isStaff} />}
+          <div>
+            {activeTab === 'home' && restaurant.businessType === 'General Store' ? <GeneralStorePos restaurant={restaurant} isStaff={isStaff} /> : activeTab === 'home' && <HomeTab restaurant={restaurant} setActiveTab={setActiveTab} isStaff={isStaff} />}
+            {activeTab !== 'home' && restaurant.businessType === 'General Store' && (activeTab === 'orders' || activeTab === 'menu') ? null : (
+              <>
+                {activeTab === 'orders' && canAccess('orders') && <OrdersTab restaurantId={restaurant.id} businessType={restaurant.businessType} />}
+                {activeTab === 'menu' && canAccess('menu') && <MenuTab restaurantId={restaurant.id} businessType={restaurant.businessType} />}
+              </>
+            )}
+            {activeTab === 'customers' && canAccess('customers') && <StoreCustomersTab restaurant={restaurant} />}
+            {activeTab === 'staff' && !isStaff && <StaffManagementTab restaurant={restaurant} setRestaurant={setRestaurant} />}
+            {activeTab === 'recent_sales' && (isFoodBiz || restaurant.businessType === 'General Store') && <RecentSalesTab restaurantId={restaurant.id} businessType={restaurant.businessType} staffMembers={restaurant.staffMembers || []} />}
+            {activeTab === 'analytics' && !isStaff && canAccess('analytics') && <AnalyticsTab restaurantId={restaurant.id} businessType={restaurant.businessType} staffMembers={restaurant.staffMembers || []} />}
+            {activeTab === 'staff_analytics' && canAccess('staff_analytics') && <StaffPerformanceAnalytics restaurantId={restaurant.id} staffMembers={restaurant.staffMembers || []} forceStaffView={isStaff} />}
+            {activeTab === 'settings' && <SettingsTab onLogout={handleLogout} restaurant={restaurant} setRestaurant={setRestaurant} setActiveTab={setActiveTab} isStaff={isStaff} />}
+            {activeTab === 'qr' && <QRTab restaurantId={restaurant.id} name={restaurant.name} businessType={restaurant.businessType} />}
+          </div>
         </div>
       </main>
     </div>
@@ -1089,43 +1101,79 @@ function HomeTab({ restaurant, setActiveTab, isStaff }: { restaurant: Restaurant
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        <div className="flex flex-col items-center justify-center rounded-3xl border border-neutral-100 bg-white p-6 shadow-sm">
-          <div className="mb-2 rounded-full bg-orange-100 p-3 text-orange-600">
-            {isStaff ? <Package className="h-6 w-6" /> : <DollarSign className="h-6 w-6" />}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        {/* Today Sales Stat Card */}
+        <div className="rounded-3xl border border-neutral-100 bg-white p-5 shadow-sm flex flex-col justify-between min-h-[140px] hover:shadow-md transition-all">
+          <div className="flex justify-between items-start">
+            <span className="text-xs font-black uppercase tracking-wider text-neutral-400">{isStaff ? 'Sales Count' : 'Today Sales'}</span>
+            <div className="rounded-2xl bg-orange-50 p-2 text-orange-600">
+              {isStaff ? <Package className="h-5 w-5" /> : <DollarSign className="h-5 w-5" />}
+            </div>
           </div>
-          <h4 className="text-sm font-medium text-neutral-500">{isStaff ? 'Sales Count' : 'Today Sales'}</h4>
-          <p className="mt-1 text-2xl font-black text-neutral-900">{isStaff ? completedOrdersCount : formatCurrency(todaysSales)}</p>
+          <div className="mt-4">
+            <h3 className="text-2xl font-black text-neutral-900 tracking-tight">{isStaff ? completedOrdersCount : formatCurrency(todaysSales)}</h3>
+            <p className="text-[10px] text-neutral-400 mt-1 font-semibold flex items-center gap-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span> Live calculation
+            </p>
+          </div>
         </div>
 
-        <div className="flex flex-col items-center justify-center rounded-3xl border border-neutral-100 bg-white p-6 shadow-sm">
-          <div className="mb-2 rounded-full bg-blue-100 p-3 text-blue-600">
-            <Package className="h-6 w-6" />
+        {/* Total Orders Stat Card */}
+        <div className="rounded-3xl border border-neutral-100 bg-white p-5 shadow-sm flex flex-col justify-between min-h-[140px] hover:shadow-md transition-all">
+          <div className="flex justify-between items-start">
+            <span className="text-xs font-black uppercase tracking-wider text-neutral-400">Total Orders</span>
+            <div className="rounded-2xl bg-blue-50 p-2 text-blue-600">
+              <Package className="h-5 w-5" />
+            </div>
           </div>
-          <h4 className="text-sm font-medium text-neutral-500">Total Orders</h4>
-          <p className="mt-1 text-2xl font-black text-neutral-900">{totalOrdersCount}</p>
+          <div className="mt-4">
+            <h3 className="text-2xl font-black text-neutral-900 tracking-tight">{totalOrdersCount}</h3>
+            <p className="text-[10px] text-neutral-400 mt-1 font-semibold">Today's standard volume</p>
+          </div>
         </div>
 
-        <div className="flex flex-col items-center justify-center rounded-3xl border border-neutral-100 bg-white p-6 shadow-sm">
-          <div className="mb-2 rounded-full bg-yellow-100 p-3 text-yellow-600">
-            <Clock className="h-6 w-6" />
+        {/* Pending Orders Stat Card */}
+        <div className="rounded-3xl border border-neutral-100 bg-white p-5 shadow-sm flex flex-col justify-between min-h-[140px] hover:shadow-md transition-all">
+          <div className="flex justify-between items-start">
+            <span className="text-xs font-black uppercase tracking-wider text-neutral-400">Pending</span>
+            <div className="rounded-2xl bg-amber-50 p-2 text-amber-600">
+              <Clock className="h-5 w-5 animate-pulse" />
+            </div>
           </div>
-          <h4 className="text-sm font-medium text-neutral-500">Pending</h4>
-          <p className="mt-1 text-2xl font-black text-neutral-900">{pendingOrdersCount}</p>
+          <div className="mt-4">
+            <h3 className="text-2xl font-black text-neutral-900 tracking-tight">{pendingOrdersCount}</h3>
+            <p className="text-[10px] text-neutral-400 mt-1 font-semibold flex items-center gap-1">
+              {pendingOrdersCount > 0 ? (
+                <>
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-ping"></span> Requires prep
+                </>
+              ) : (
+                <>
+                  <span className="h-1.5 w-1.5 rounded-full bg-neutral-300"></span> No queue
+                </>
+              )}
+            </p>
+          </div>
         </div>
 
-        <div className="flex flex-col items-center justify-center rounded-3xl border border-neutral-100 bg-white p-6 shadow-sm">
-          <div className="mb-2 rounded-full bg-green-100 p-3 text-green-600">
-            <CheckCircle2 className="h-6 w-6" />
+        {/* Completed Orders Stat Card */}
+        <div className="rounded-3xl border border-neutral-100 bg-white p-5 shadow-sm flex flex-col justify-between min-h-[140px] hover:shadow-md transition-all">
+          <div className="flex justify-between items-start">
+            <span className="text-xs font-black uppercase tracking-wider text-neutral-400">Completed</span>
+            <div className="rounded-2xl bg-emerald-50 p-2 text-emerald-600">
+              <CheckCircle2 className="h-5 w-5" />
+            </div>
           </div>
-          <h4 className="text-sm font-medium text-neutral-500">Completed</h4>
-          <p className="mt-1 text-2xl font-black text-neutral-900">{completedOrdersCount}</p>
+          <div className="mt-4">
+            <h3 className="text-2xl font-black text-neutral-900 tracking-tight">{completedOrdersCount}</h3>
+            <p className="text-[10px] text-neutral-400 mt-1 font-semibold">Ready & dispatched</p>
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {restaurant.businessType === 'Salon' && restaurant.shops && restaurant.shops.length > 0 && !isStaff && (
-          <div className="rounded-3xl border border-neutral-100 bg-white p-6 shadow-sm md:col-span-2">
+          <div className="rounded-3xl border border-neutral-100 bg-white p-6 shadow-sm lg:col-span-3 md:col-span-2">
             <h3 className="font-bold flex items-center gap-2 text-neutral-900 mb-4">
               <DollarSign className="h-4 w-4" /> Shop-wise Revenue (All Time)
             </h3>
@@ -1139,87 +1187,104 @@ function HomeTab({ restaurant, setActiveTab, isStaff }: { restaurant: Restaurant
             </div>
           </div>
         )}
-        <div className="rounded-3xl border border-neutral-100 bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-bold flex items-center gap-2 text-neutral-900">
-              <Bell className="h-4 w-4" /> Live Orders
-            </h3>
-            <button onClick={() => setActiveTab('orders')} className="text-xs font-bold text-orange-600 uppercase tracking-widest hover:underline">View All</button>
+        
+        {/* Live Orders Card */}
+        <div className="rounded-3xl border border-neutral-100 bg-white p-6 shadow-sm flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold flex items-center gap-2 text-neutral-900">
+                <Bell className="h-4 w-4 text-brand-primary" /> Live Orders
+              </h3>
+              <button onClick={() => setActiveTab('orders')} className="text-xs font-bold text-brand-primary uppercase tracking-widest hover:underline">View All</button>
+            </div>
+            
+            {activeOrders.length === 0 ? (
+              <p className="text-neutral-500 text-sm text-center py-6">No active orders</p>
+            ) : (
+              <ul className="space-y-3">
+                 {miniOrders.map(order => (
+                   <li key={order.id} className="flex justify-between items-center text-sm p-3 rounded-2xl bg-neutral-50">
+                      <span className="font-bold">{(businessType === 'Salon' || businessType === 'Clinic') ? 'Staff Code' : 'Table'} {order.tableNo} → {order.items.map(i => `${i.quantity}x ${i.name}`).join(', ')}</span>
+                      {!(businessType === 'Salon' || businessType === 'Clinic') && (
+                        <span className={cn("text-[10px] uppercase font-black tracking-widest px-2 py-1 rounded-full",
+                           order.status === 'PENDING' ? 'bg-amber-100 text-amber-700' :
+                           order.status === 'PREPARING' ? 'bg-orange-100 text-orange-700' :
+                           'bg-blue-100 text-blue-700'
+                        )}>
+                          {order.status === 'PENDING' && '⏳ Pending'}
+                          {order.status === 'PREPARING' && '⏳ Preparing'}
+                          {order.status === 'ACCEPTED' && '✅ Accepted'}
+                        </span>
+                      )}
+                   </li>
+                 ))}
+              </ul>
+            )}
           </div>
-          
-          {activeOrders.length === 0 ? (
-            <p className="text-neutral-500 text-sm text-center py-4">No active orders</p>
-          ) : (
-            <ul className="space-y-3">
-               {miniOrders.map(order => (
-                 <li key={order.id} className="flex justify-between items-center text-sm p-3 rounded-2xl bg-neutral-50">
-                    <span className="font-bold">{(businessType === 'Salon' || businessType === 'Clinic') ? 'Staff Code' : 'Table'} {order.tableNo} → {order.items.map(i => `${i.quantity}x ${i.name}`).join(', ')}</span>
-                    {!(businessType === 'Salon' || businessType === 'Clinic') && (
-                      <span className={cn("text-[10px] uppercase font-black tracking-widest px-2 py-1 rounded-full",
-                         order.status === 'PENDING' ? 'bg-amber-100 text-amber-700' :
-                         order.status === 'PREPARING' ? 'bg-orange-100 text-orange-700' :
-                         'bg-blue-100 text-blue-700'
-                      )}>
-                        {order.status === 'PENDING' && '⏳ Pending'}
-                        {order.status === 'PREPARING' && '⏳ Preparing'}
-                        {order.status === 'ACCEPTED' && '✅ Accepted'}
-                      </span>
-                    )}
-                 </li>
-               ))}
-            </ul>
-          )}
         </div>
 
-        <div className="rounded-3xl border border-neutral-100 bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-bold flex items-center gap-2 text-neutral-900">
-              <TrendingUp className="h-4 w-4" /> {(businessType === 'Salon' || businessType === 'Clinic') ? 'Top Services' : 'Top Selling Items'}
-            </h3>
-            <select
-              value={topItemsFilter}
-              onChange={(e) => setTopItemsFilter(e.target.value as any)}
-              className="bg-neutral-50 border border-neutral-200 text-xs font-bold rounded-lg px-2 py-1 outline-none focus:border-orange-500 text-neutral-600"
-            >
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
-              <option value="yearly">Yearly</option>
-            </select>
+        {/* Top Selling Items Card */}
+        <div className="rounded-3xl border border-neutral-100 bg-white p-6 shadow-sm flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold flex items-center gap-2 text-neutral-900">
+                <TrendingUp className="h-4 w-4 text-brand-primary" /> {(businessType === 'Salon' || businessType === 'Clinic') ? 'Top Services' : 'Top Selling Items'}
+              </h3>
+              <select
+                value={topItemsFilter}
+                onChange={(e) => setTopItemsFilter(e.target.value as any)}
+                className="bg-neutral-50 border border-neutral-200 text-xs font-bold rounded-lg px-2 py-1 outline-none focus:border-brand-primary text-neutral-600"
+              >
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+                <option value="yearly">Yearly</option>
+              </select>
+            </div>
+            {topItems.length === 0 ? (
+              <p className="text-neutral-500 text-sm text-center py-6">No sales yet</p>
+            ) : (
+              <ul className="space-y-3">
+                {topItems.map(([name, count]) => (
+                  <li key={name} className="flex justify-between items-center text-sm p-3 rounded-2xl bg-neutral-50">
+                    <span className="font-bold text-neutral-900">{name}</span>
+                    <span className="text-brand-primary font-black">{count} {(businessType === 'Salon' || businessType === 'Clinic') ? 'bookings' : 'orders'}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
-          {topItems.length === 0 ? (
-            <p className="text-neutral-500 text-sm text-center py-4">No sales yet</p>
-          ) : (
-            <ul className="space-y-3">
-              {topItems.map(([name, count]) => (
-                <li key={name} className="flex justify-between items-center text-sm p-3 rounded-2xl bg-neutral-50">
-                  <span className="font-bold text-neutral-900">{name}</span>
-                  <span className="text-orange-600 font-black">{count} {(businessType === 'Salon' || businessType === 'Clinic') ? 'bookings' : 'orders'}</span>
-                </li>
-              ))}
-            </ul>
-          )}
+        </div>
+
+        {/* Notifications and System Status Card */}
+        <div className="rounded-3xl border border-neutral-100 bg-white p-6 shadow-sm flex flex-col justify-between">
+          <div>
+            <h3 className="font-bold flex items-center gap-2 text-neutral-900 mb-4">
+              <AlertTriangle className="h-4 w-4 text-brand-primary" /> Notifications
+            </h3>
+            {allNotifications.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center text-neutral-400">
+                <div className="rounded-full bg-emerald-100 p-3 text-emerald-600 mb-3">
+                  <CheckCircle2 className="h-6 w-6" />
+                </div>
+                <p className="text-sm font-bold text-neutral-800">All Systems Standard</p>
+                <p className="text-xs text-neutral-500">No active stock alerts or warnings.</p>
+              </div>
+            ) : (
+              <ul className="space-y-3">
+                {allNotifications.map(notification => (
+                  <li key={notification.id} className={cn("flex items-center gap-3 text-xs p-3 rounded-2xl", notification.type === 'INVENTORY' ? 'bg-amber-50 text-amber-900' : 'bg-blue-50 text-blue-900')}>
+                    <span className={notification.type === 'INVENTORY' ? 'text-amber-500' : 'text-blue-500'}>
+                      {notification.type === 'INVENTORY' ? '⚠️' : '🔔'}
+                    </span>
+                    <span className="font-medium">{notification.message}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
       </div>
-      
-      {/* Alerts Section */}
-      {allNotifications.length > 0 && (
-        <div className="rounded-3xl border border-neutral-100 bg-white p-6 shadow-sm">
-          <h3 className="font-bold flex items-center gap-2 text-neutral-900 mb-4">
-            <AlertTriangle className="h-4 w-4 text-amber-500" /> Notifications
-          </h3>
-          <ul className="space-y-3">
-            {allNotifications.map(notification => (
-              <li key={notification.id} className={cn("flex items-center gap-3 text-sm p-3 rounded-2xl", notification.type === 'INVENTORY' ? 'bg-amber-50 text-amber-900' : 'bg-blue-50 text-blue-900')}>
-                <span className={notification.type === 'INVENTORY' ? 'text-amber-500' : 'text-blue-500'}>
-                  {notification.type === 'INVENTORY' ? '⚠️' : '🔔'}
-                </span>
-                <span className="font-medium">{notification.message}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
     </div>
   );
 }
@@ -1229,16 +1294,16 @@ function NavBtn({ active, onClick, icon, label, isLast, className }: { active: b
     <button
       onClick={onClick}
       className={cn(
-        "flex flex-col items-center gap-1 rounded-xl px-4 py-3 text-sm font-medium transition-all lg:flex-row lg:gap-3",
+        "flex flex-col items-center gap-1 rounded-xl px-4 py-3 text-sm font-medium transition-all md:flex-row md:gap-3 md:justify-start md:w-full",
         active 
           ? "bg-brand-primary text-white shadow-lg shadow-brand-secondary" 
           : "text-neutral-500 hover:bg-neutral-100",
-        isLast && "lg:mt-auto",
+        isLast && "md:mt-auto",
         className
       )}
     >
       {icon}
-      <span className="text-[10px] lg:text-sm">{label}</span>
+      <span className="text-[10px] md:text-sm font-semibold">{label}</span>
     </button>
   );
 }
@@ -1282,7 +1347,7 @@ function OrdersTab({ restaurantId, businessType }: { restaurantId: string, busin
   const activeOrders = orders.filter(o => o.status !== 'COMPLETED' && o.status !== 'CANCELLED');
 
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 animate-in fade-in duration-300">
       {activeOrders.length === 0 && (
         <div className="col-span-full py-20 text-center">
           <p className="text-neutral-400">Waiting for live orders...</p>
@@ -1682,7 +1747,7 @@ function MenuTab({ restaurantId, businessType }: { restaurantId: string, busines
         )}
       </AnimatePresence>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {filteredItems.map(item => (
           <div key={item.id} className="group relative rounded-2xl border border-neutral-200 bg-white p-4 transition-all hover:border-brand-primary flex flex-col justify-between">
             <div>
@@ -2849,7 +2914,7 @@ function RecentSalesTab({ restaurantId, businessType, staffMembers }: { restaura
   );
 }
 
-function SettingsTab({ onLogout, restaurant, setRestaurant, setActiveTab, isStaff }: { onLogout: () => void, restaurant: Restaurant, setRestaurant: React.Dispatch<React.SetStateAction<Restaurant | null>>, setActiveTab: (tab: 'home' | 'orders' | 'menu' | 'settings' | 'analytics' | 'staff' | 'staff_analytics') => void, isStaff: boolean }) {
+function SettingsTab({ onLogout, restaurant, setRestaurant, setActiveTab, isStaff }: { onLogout: () => void, restaurant: Restaurant, setRestaurant: React.Dispatch<React.SetStateAction<Restaurant | null>>, setActiveTab: (tab: 'home' | 'orders' | 'menu' | 'settings' | 'analytics' | 'staff' | 'staff_analytics' | 'qr') => void, isStaff: boolean }) {
   const [businessType, setBusinessType] = useState(restaurant.businessType);
   const [updating, setUpdating] = useState(false);
   const [showAccountSettings, setShowAccountSettings] = useState(false);
@@ -2917,7 +2982,7 @@ function SettingsTab({ onLogout, restaurant, setRestaurant, setActiveTab, isStaf
   return (
     <div className="space-y-8 max-w-2xl">
       {!isStaff && (
-        <div className="lg:hidden">
+        <div className="md:hidden">
           <button 
             onClick={() => setActiveTab('analytics')} 
             className="flex items-center gap-4 rounded-3xl bg-neutral-900 p-6 w-full shadow-lg hover:bg-neutral-800 transition-colors"

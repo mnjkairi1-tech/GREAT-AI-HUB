@@ -83,36 +83,37 @@ export default function CustomerMenu() {
 
     const fetchData = async () => {
       try {
-        const rDoc = await getDoc(doc(db, 'restaurants', restaurantId));
+        const [rDoc, qrSnap] = await Promise.all([
+          getDoc(doc(db, 'restaurants', restaurantId)),
+          (tableNo && tableNo !== 'PREVIEW') 
+            ? getDocs(query(collection(db, 'qrTables'), where('restaurantId', '==', restaurantId), where('tableNo', '==', tableNo)))
+            : Promise.resolve({ empty: true, docs: [] })
+        ]);
+        
         if (rDoc.exists()) {
           setRestaurant({ id: rDoc.id, ...rDoc.data() } as Restaurant);
         }
+        
+        if (!qrSnap.empty) {
+          setQrTableInfo({ id: qrSnap.docs[0].id, ...qrSnap.docs[0].data() });
+        }
       } catch (error) {
-        handleFirestoreError(error, OperationType.GET, `restaurants/${restaurantId}`);
+        console.error("Error fetching restaurant or QR info", error);
       }
       
-      if (tableNo && tableNo !== 'PREVIEW') {
-        try {
-          const qrQ = query(collection(db, 'qrTables'), where('restaurantId', '==', restaurantId), where('tableNo', '==', tableNo));
-          const qrSnap = await getDocs(qrQ);
-          if (!qrSnap.empty) {
-            setQrTableInfo({ id: qrSnap.docs[0].id, ...qrSnap.docs[0].data() });
-          }
-        } catch (error) {
-          console.error("Error fetching QR table info", error);
-        }
-      }
+      // Don't block the UI rendering for past orders
+      setLoading(false);
       
       try {
+        // Fetch past orders in the background so it doesn't delay menu rendering
         const qPath = 'orders';
         const ordersQ = query(collection(db, qPath), where('restaurantId', '==', restaurantId));
-        const ordersSnap = await getDocs(ordersQ);
-        setPastOrders(ordersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order)));
+        getDocs(ordersQ).then(ordersSnap => {
+          setPastOrders(ordersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order)));
+        }).catch(err => console.error("Error fetching past orders", err));
       } catch (error) {
-        handleFirestoreError(error, OperationType.LIST, 'orders');
+        console.error("Error setting up orders fetch", error);
       }
-
-      setLoading(false);
     };
     
     fetchData();

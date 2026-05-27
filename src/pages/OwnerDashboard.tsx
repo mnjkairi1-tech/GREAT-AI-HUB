@@ -108,6 +108,8 @@ function GeneralStorePos({ restaurant, isStaff }: { restaurant: Restaurant, isSt
   const [custName, setCustName] = useState('');
   const [foundCust, setFoundCust] = useState<StoreCustomer | null>(null);
 
+  const isStaffSelectionMissing = restaurant.enableStaffCode && (restaurant.staffMembers && restaurant.staffMembers.length > 0) && !staffCode;
+
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -379,10 +381,16 @@ function GeneralStorePos({ restaurant, isStaff }: { restaurant: Restaurant, isSt
          )}
       </div>
 
+      {isStaffSelectionMissing && (
+        <div className="bg-red-50 text-red-600 px-4 py-2 rounded-xl text-xs font-bold flex items-center justify-center mb-3">
+          Please select a staff member to proceed.
+        </div>
+      )}
+
       {/* ACTION PANES */}
       {view === 'HOME' && (
         <div className="grid grid-cols-3 gap-3">
-          <button onClick={() => handleCashSale()} disabled={loading} className="flex flex-col items-center justify-center gap-2 py-6 px-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-3xl transition-colors">
+          <button onClick={() => handleCashSale()} disabled={loading || (isStaffSelectionMissing as boolean)} className="flex flex-col items-center justify-center gap-2 py-6 px-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-3xl transition-colors disabled:opacity-50 disabled:pointer-events-none">
             <DollarSign className="h-8 w-8 mb-1" />
             <span className="text-xs font-black uppercase tracking-widest text-center">Cash <br/>Sale</span>
           </button>
@@ -432,7 +440,7 @@ function GeneralStorePos({ restaurant, isStaff }: { restaurant: Restaurant, isSt
                    <p className="text-xl font-black text-neutral-900">{foundCust.name}</p>
                    <p className="text-sm font-medium text-neutral-500 mt-1">Due: ₹{foundCust.creditBalance}</p>
                 </div>
-                <button disabled={loading} onClick={() => handleCreditSale()} className="w-full bg-orange-600 hover:bg-orange-700 text-white font-black uppercase tracking-wide py-4 rounded-xl transition-colors">
+                <button disabled={loading || (isStaffSelectionMissing as boolean)} onClick={() => handleCreditSale()} className="w-full bg-orange-600 hover:bg-orange-700 text-white font-black uppercase tracking-wide py-4 rounded-xl transition-colors disabled:opacity-50 disabled:pointer-events-none">
                   {loading ? 'Processing...' : `Confirm ₹${amount || 0} Udhaari`}
                 </button>
              </div>
@@ -722,14 +730,15 @@ export default function OwnerDashboard() {
       if (user) {
         setLoading(true);
         try {
-          // 1. Try finding as owner
+          // Fetch owner and staff restaurants concurrently to reduce latency
           let qOwner = query(collection(db, 'restaurants'), where('ownerId', '==', user.uid));
-          let snapOwner = await getDocs(qOwner);
-          
-          // 2. Try finding as staff
           let qStaff = query(collection(db, 'restaurants'), where('staffEmails', 'array-contains', user.email));
-          let snapStaff = await getDocs(qStaff);
-
+          
+          let [snapOwner, snapStaff] = await Promise.all([
+            getDocs(qOwner),
+            getDocs(qStaff)
+          ]);
+          
           let loadedRestaurants: Restaurant[] = [];
           let isUserStaffForCurrent = false;
 
@@ -998,15 +1007,10 @@ function HomeTab({ restaurant, setActiveTab, isStaff }: { restaurant: Restaurant
     const unsubMenu = onSnapshot(qMenu, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MenuItem));
       setMenuItems(filterByBusinessType(data, businessType));
-      setLoading(false);
     });
 
     return () => { unsubOrders(); unsubMenu(); };
   }, [restaurantId]);
-
-  if (loading) {
-    return <div className="text-center p-10 font-bold text-neutral-400">Loading metrics...</div>;
-  }
 
   const today = new Date();
   const todayOrders = orders.filter(o => {

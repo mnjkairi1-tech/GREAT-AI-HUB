@@ -56,6 +56,17 @@ export const THEMES: Record<string, ThemeConfig> = {
     borderHex: '#ffe4e6',
     description: 'Ultra-cute layered soft pink aesthetics. Fun and vibrant.'
   },
+  'ai-atlas': {
+    id: 'ai-atlas',
+    name: 'Smart QR (Mint)',
+    primaryHex: '#0faf87',
+    secondaryHex: '#eaf5f1',
+    bgHex: '#f4faf8',
+    cardHex: '#ffffff',
+    textHex: '#113a32',
+    borderHex: '#e2f0ec',
+    description: 'Beautiful mint teals, clean custom inputs, and sleek modern branding.'
+  },
   'matcha-cafe': {
     id: 'matcha-cafe',
     name: 'Matcha Cafe',

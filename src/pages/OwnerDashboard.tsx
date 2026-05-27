@@ -604,8 +604,8 @@ function StoreCustomersTab({ restaurant }: { restaurant: Restaurant }) {
                    </div>
                    {order.tableNo && order.tableNo !== 'Unknown' && (
                      <div className="bg-neutral-50 border border-neutral-200 px-3 py-1.5 rounded-lg flex flex-col items-end">
-                       <span className="text-[9px] uppercase font-black tracking-widest text-neutral-400">Staff Code</span>
-                       <span className="text-sm font-bold text-neutral-700">{order.tableNo}</span>
+                       <span className="text-[9px] uppercase font-black tracking-widest text-neutral-400">Processed By</span>
+                       <span className="text-sm font-bold text-neutral-700">{restaurant.staffMembers?.find(s => s.code === order.tableNo)?.name || order.tableNo}</span>
                      </div>
                    )}
                  </div>
@@ -872,14 +872,6 @@ export default function OwnerDashboard() {
             </>
           )}
           
-          {isFoodBiz && (
-            <NavBtn 
-              active={activeTab === 'recent_sales'} 
-              onClick={() => setActiveTab('recent_sales')}
-              icon={<History className="h-5 w-5" />}
-              label="Completed Orders"
-            />
-          )}
           {canAccess('analytics') && !isStaff && (
             <NavBtn 
               active={activeTab === 'analytics'} 
@@ -887,6 +879,15 @@ export default function OwnerDashboard() {
               icon={<BarChart3 className="h-5 w-5" />}
               label="Analytics"
               className={isFoodBiz ? "hidden lg:flex" : ""}
+            />
+          )}
+          
+          {(isFoodBiz || restaurant.businessType === 'General Store') && (
+            <NavBtn 
+              active={activeTab === 'recent_sales'} 
+              onClick={() => setActiveTab('recent_sales')}
+              icon={<History className="h-5 w-5" />}
+              label="Completed Orders"
             />
           )}
 
@@ -958,8 +959,8 @@ export default function OwnerDashboard() {
           )}
           {activeTab === 'customers' && canAccess('customers') && <StoreCustomersTab restaurant={restaurant} />}
           {activeTab === 'staff' && !isStaff && <StaffManagementTab restaurant={restaurant} setRestaurant={setRestaurant} />}
-          {activeTab === 'recent_sales' && isFoodBiz && <RecentSalesTab restaurantId={restaurant.id} businessType={restaurant.businessType} />}
-          {activeTab === 'analytics' && !isStaff && canAccess('analytics') && <AnalyticsTab restaurantId={restaurant.id} businessType={restaurant.businessType} />}
+          {activeTab === 'recent_sales' && (isFoodBiz || restaurant.businessType === 'General Store') && <RecentSalesTab restaurantId={restaurant.id} businessType={restaurant.businessType} staffMembers={restaurant.staffMembers || []} />}
+          {activeTab === 'analytics' && !isStaff && canAccess('analytics') && <AnalyticsTab restaurantId={restaurant.id} businessType={restaurant.businessType} staffMembers={restaurant.staffMembers || []} />}
           {activeTab === 'staff_analytics' && canAccess('staff_analytics') && <StaffPerformanceAnalytics restaurantId={restaurant.id} staffMembers={restaurant.staffMembers || []} forceStaffView={isStaff} />}
           {activeTab === 'settings' && <SettingsTab onLogout={handleLogout} restaurant={restaurant} setRestaurant={setRestaurant} setActiveTab={setActiveTab} isStaff={isStaff} />}
         </div>
@@ -2484,25 +2485,27 @@ function StaffManagementTab({ restaurant, setRestaurant }: { restaurant: Restaur
       
       <div className="space-y-4 mb-6">
         <h4 className="font-bold text-sm text-neutral-600">Register Staff Member (For tracking earnings)</h4>
-        <div className="flex gap-2">
-          <input 
-              type="text"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              className="flex-1 rounded-xl border border-neutral-200 px-4 py-3 outline-none focus:border-orange-500"
-              placeholder="Staff Name"
-          />
-          <input 
-              type="text"
-              value={newCode}
-              onChange={(e) => setNewCode(e.target.value)}
-              className="w-24 rounded-xl border border-neutral-200 px-4 py-3 outline-none focus:border-orange-500"
-              placeholder="Code"
-          />
+        <div className="flex flex-col sm:flex-row gap-2">
+          <div className="flex gap-2 w-full sm:w-auto sm:flex-1">
+            <input 
+                type="text"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                className="flex-1 min-w-0 rounded-xl border border-neutral-200 px-4 py-3 outline-none focus:border-orange-500"
+                placeholder="Staff Name"
+            />
+            <input 
+                type="text"
+                value={newCode}
+                onChange={(e) => setNewCode(e.target.value)}
+                className="w-24 shrink-0 rounded-xl border border-neutral-200 px-4 py-3 outline-none focus:border-orange-500"
+                placeholder="Code"
+            />
+          </div>
           <button 
               disabled={updating}
               onClick={handleAddStaffMember}
-              className="rounded-xl bg-orange-600 px-4 py-3 font-bold text-white transition-all hover:bg-orange-700 disabled:opacity-50"
+              className="w-full sm:w-auto rounded-xl bg-orange-600 px-6 py-3 font-bold text-white transition-all hover:bg-orange-700 disabled:opacity-50 whitespace-nowrap"
           >
               Add
           </button>
@@ -2726,7 +2729,7 @@ function SalonProductInventory({ restaurant }: { restaurant: Restaurant }) {
 
 // --- TAB: Settings ---
 // --- Component: StaffRecentOrders ---
-function StaffRecentOrders({ restaurantId, businessType }: { restaurantId: string, businessType: string }) {
+function StaffRecentOrders({ restaurantId, businessType, staffMembers }: { restaurantId: string, businessType: string, staffMembers: StaffMember[] }) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -2821,7 +2824,7 @@ function StaffRecentOrders({ restaurantId, businessType }: { restaurantId: strin
                   <tr key={order.id} className="transition-colors hover:bg-neutral-50/30">
                     <td className="px-5 py-4">{format(date, 'MMM dd, h:mm a')}</td>
                     <td className="px-5 py-4 font-medium text-neutral-900">{order.customerName || 'Walk-in'}</td>
-                    <td className="px-5 py-4">{(businessType === 'Salon' || businessType === 'General Store') ? (!order.tableNo || order.tableNo === 'Unknown' ? 'Owner' : `Code: ${order.tableNo}`) : `Table ${order.tableNo}`}</td>
+                    <td className="px-5 py-4">{(businessType === 'Salon' || businessType === 'General Store') ? (!order.tableNo || order.tableNo === 'Unknown' ? 'Owner' : staffMembers?.find(s => s.code === order.tableNo)?.name || `Code: ${order.tableNo}`) : `Table ${order.tableNo}`}</td>
                     <td className="px-5 py-4 text-right font-black text-neutral-900">{formatCurrency(order.totalAmount || 0)}</td>
                   </tr>
                 );
@@ -2834,10 +2837,10 @@ function StaffRecentOrders({ restaurantId, businessType }: { restaurantId: strin
   );
 }
 
-function RecentSalesTab({ restaurantId, businessType }: { restaurantId: string, businessType: string }) {
+function RecentSalesTab({ restaurantId, businessType, staffMembers }: { restaurantId: string, businessType: string, staffMembers: StaffMember[] }) {
   return (
     <div className="mx-auto max-w-4xl">
-      <StaffRecentOrders restaurantId={restaurantId} businessType={businessType} />
+      <StaffRecentOrders restaurantId={restaurantId} businessType={businessType} staffMembers={staffMembers} />
     </div>
   );
 }
@@ -3170,7 +3173,7 @@ function SettingsTab({ onLogout, restaurant, setRestaurant, setActiveTab, isStaf
 }
 
 // --- TAB: Analytics ---
-function AnalyticsTab({ restaurantId, businessType }: { restaurantId: string, businessType: string }) {
+function AnalyticsTab({ restaurantId, businessType, staffMembers }: { restaurantId: string, businessType: string, staffMembers: StaffMember[] }) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -3273,7 +3276,7 @@ function AnalyticsTab({ restaurantId, businessType }: { restaurantId: string, bu
         )}
       </div>
       
-      {!['hotel', 'restaurant', 'fastfood', 'fast food', 'cafe'].includes(businessType.toLowerCase()) && (
+      {!['hotel', 'restaurant', 'fastfood', 'fast food', 'cafe', 'general store'].includes(businessType.toLowerCase()) && (
         <div className="rounded-3xl border border-neutral-100 bg-white p-6 shadow-sm mt-8 xl:col-span-2 overflow-hidden flex flex-col">
             <h3 className="mb-6 text-lg font-bold text-neutral-900">Recent Completed Orders</h3>
             <div className="overflow-x-auto w-full scrollbar-hide">
@@ -3297,7 +3300,7 @@ function AnalyticsTab({ restaurantId, businessType }: { restaurantId: string, bu
                       <tr key={order.id}>
                         <td className="py-4 pr-4 whitespace-nowrap">{dateInfo ? format(dateInfo, 'MMM dd, h:mm a') : '-'}</td>
                         <td className="py-4 pr-4 font-medium text-neutral-900 whitespace-nowrap">{order.customerName}</td>
-                        <td className="py-4 pr-4 whitespace-nowrap">{(businessType === 'Salon' || businessType === 'General Store') ? (!order.tableNo || order.tableNo === 'Unknown' ? 'Owner' : `Code: ${order.tableNo}`) : `Table ${order.tableNo}`}</td>
+                        <td className="py-4 pr-4 whitespace-nowrap">{(businessType === 'Salon' || businessType === 'General Store') ? (!order.tableNo || order.tableNo === 'Unknown' ? 'Owner' : staffMembers?.find(s => s.code === order.tableNo)?.name || `Code: ${order.tableNo}`) : `Table ${order.tableNo}`}</td>
                         <td className="py-4 text-right font-black text-neutral-900 whitespace-nowrap">{formatCurrency(order.totalAmount)}</td>
                       </tr>
                     )

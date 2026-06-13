@@ -1376,21 +1376,90 @@ function OrdersTab({ restaurantId, businessType, restaurantName }: { restaurantI
 
 function OrderCard({ order, updateStatus, statusMap, businessType, onViewInvoice }: { key?: React.Key, order: Order, updateStatus: (id: string, s: OrderStatus) => Promise<void>, statusMap: any, businessType: string, onViewInvoice: (order: Order) => void }) {
   const [expanded, setExpanded] = useState(false);
+  const [isNew, setIsNew] = useState(false);
+  const [prevStatus, setPrevStatus] = useState(order.status);
+  const [statusChanged, setStatusChanged] = useState(false);
+
+  useEffect(() => {
+    // Detect if order is structurally fresh (created within last 45 secs)
+    const createdTime = order.createdAt?.toDate ? order.createdAt.toDate() : new Date(order.createdAt);
+    const msSinceCreation = Date.now() - createdTime.getTime();
+    if (!isNaN(createdTime.getTime()) && msSinceCreation < 45000) {
+      setIsNew(true);
+      const timer = setTimeout(() => {
+        setIsNew(false);
+      }, 15000); // Pulse for 15 seconds to notify owner
+      return () => clearTimeout(timer);
+    }
+  }, [order.id, order.createdAt]);
+
+  useEffect(() => {
+    // Notify on live status transitions
+    if (order.status !== prevStatus) {
+      setPrevStatus(order.status);
+      setStatusChanged(true);
+      const timer = setTimeout(() => {
+        setStatusChanged(false);
+      }, 4000); // 4 seconds glow flash
+      return () => clearTimeout(timer);
+    }
+  }, [order.status, prevStatus]);
+
+  // Determine dynamic borders and shadows based on micro-state
+  let borderStyle = "border-neutral-200 shadow-sm";
+  if (isNew) {
+    borderStyle = "border-amber-400 shadow-lg shadow-amber-500/10 ring-2 ring-amber-400";
+  } else if (statusChanged) {
+    switch (order.status) {
+      case 'ACCEPTED': borderStyle = "border-blue-400 shadow-lg shadow-blue-500/15 ring-2 ring-blue-400"; break;
+      case 'PREPARING': borderStyle = "border-brand-primary shadow-lg shadow-brand-secondary/15 ring-2 ring-brand-primary"; break;
+      case 'COMPLETED': borderStyle = "border-emerald-400 shadow-lg shadow-emerald-500/15 ring-2 ring-emerald-400"; break;
+      case 'CANCELLED': borderStyle = "border-red-400 shadow-lg shadow-red-500/15 ring-2 ring-red-400"; break;
+      default: borderStyle = "border-neutral-400 shadow-lg ring-2 ring-neutral-400";
+    }
+  }
 
   return (
     <motion.div
       layout
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.95 }}
-      className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm transition-shadow hover:shadow-md flex flex-col"
+      initial={{ opacity: 0, y: 35, scale: 0.92 }}
+      animate={{ 
+        opacity: 1, 
+        y: 0, 
+        scale: statusChanged ? [1, 1.04, 1] : 1,
+        backgroundColor: isNew ? '#fffcf5' : (statusChanged ? '#fcfcff' : '#ffffff')
+      }}
+      transition={{ 
+        y: { type: 'spring', stiffness: 260, damping: 20 },
+        scale: { duration: 0.4, ease: "easeInOut" },
+        backgroundColor: { duration: 0.5 }
+      }}
+      exit={{ opacity: 0, scale: 0.9, y: -20 }}
+      className={cn(
+        "overflow-hidden rounded-2xl border transition-all duration-500 flex flex-col hover:shadow-md",
+        borderStyle
+      )}
     >
       <div 
         className="flex cursor-pointer items-center justify-between border-b border-neutral-100 bg-neutral-50/50 p-4 active:bg-neutral-100 transition-colors"
         onClick={() => setExpanded(!expanded)}
       >
         <div>
-          <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400">{(businessType === 'Salon' || businessType === 'Clinic') ? 'Staff Code' : 'Table'} {order.tableNo}</span>
+          <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+            <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400">
+              {(businessType === 'Salon' || businessType === 'Clinic') ? 'Staff Code' : 'Table'} {order.tableNo}
+            </span>
+            {isNew && (
+              <span className="inline-flex items-center gap-1 bg-amber-500 text-white text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-full animate-pulse shadow-sm">
+                <span className="h-1 w-1 rounded-full bg-white animate-ping" /> NEW
+              </span>
+            )}
+            {statusChanged && (
+              <span className="inline-flex items-center gap-1 bg-indigo-600 text-white text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-full animate-bounce">
+                UPDATED
+              </span>
+            )}
+          </div>
           <h3 className="font-bold text-neutral-900 truncate max-w-[120px]">{order.customerName}</h3>
         </div>
         <div className="text-right flex flex-col items-end">

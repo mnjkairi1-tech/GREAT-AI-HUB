@@ -1985,6 +1985,7 @@ function QRTab({ restaurantId, name: restaurantName, businessType }: { restauran
             restaurantName={restaurantName}
             label={qr.name}
             url={`${appUrl}/q/${qr.id}`}
+            directMenuUrl={`${appUrl}/menu/${restaurantId}/${qr.tableNo}`}
             onDelete={() => deleteQR(qr.id)}
             onEdit={() => handleEdit(qr)}
             targetLink={qr.dynamicLink}
@@ -1996,10 +1997,11 @@ function QRTab({ restaurantId, name: restaurantName, businessType }: { restauran
   );
 }
 
-function QRCard({ num, url, restaurantName, label, onDelete, onEdit, targetLink, businessType }: { 
+function QRCard({ num, url, directMenuUrl, restaurantName, label, onDelete, onEdit, targetLink, businessType }: { 
   key?: string | number,
   num: number, 
   url: string, 
+  directMenuUrl: string,
   restaurantName: string, 
   label: string, 
   onDelete: () => void | Promise<void>,
@@ -2007,9 +2009,19 @@ function QRCard({ num, url, restaurantName, label, onDelete, onEdit, targetLink,
   targetLink?: string,
   businessType: string
 }) {
-  const copyUrl = () => {
+  const [copiedDirect, setCopiedDirect] = useState(false);
+  const [copiedRedirect, setCopiedRedirect] = useState(false);
+
+  const copyDirectUrl = () => {
+    navigator.clipboard.writeText(directMenuUrl);
+    setCopiedDirect(true);
+    setTimeout(() => setCopiedDirect(false), 2000);
+  };
+
+  const copyRedirectUrl = () => {
     navigator.clipboard.writeText(url);
-    alert('Public Link copied!');
+    setCopiedRedirect(true);
+    setTimeout(() => setCopiedRedirect(false), 2000);
   };
 
   return (
@@ -2047,14 +2059,28 @@ function QRCard({ num, url, restaurantName, label, onDelete, onEdit, targetLink,
         </div>
       </div>
 
-      <div className="mt-5 border-t border-neutral-100 pt-4">
-        <button 
-          onClick={copyUrl}
-          className="w-full flex items-center justify-center gap-2 rounded-xl bg-brand-secondary py-2.5 text-xs font-black text-brand-primary transition-colors hover:opacity-80 active:scale-95 uppercase tracking-widest"
-          title="Copy Link"
-        >
-          <Link className="h-3.5 w-3.5" /> Copy Link
-        </button>
+      <div className="mt-5 border-t border-neutral-100 pt-4 space-y-3">
+        <div>
+          <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block mb-1">Direct Menu Link (100% Public)</span>
+          <button 
+            onClick={copyDirectUrl}
+            className="w-full flex items-center justify-center gap-2 rounded-xl bg-orange-600 py-2.5 text-xs font-black text-white hover:bg-orange-700 transition-all hover:brightness-105 active:scale-95 uppercase tracking-widest shadow-md shadow-orange-100/50"
+            title="Copy direct customer menu link"
+          >
+            <Link className="h-3.5 w-3.5" /> {copiedDirect ? 'Copied Link!' : 'Copy Direct Menu Link'}
+          </button>
+        </div>
+
+        <div>
+          <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block mb-1">Pointer Redirect Link</span>
+          <button 
+            onClick={copyRedirectUrl}
+            className="w-full flex items-center justify-center gap-2 rounded-xl bg-neutral-100 py-2 text-xs font-bold text-neutral-700 hover:bg-neutral-200 transition-colors active:scale-95 uppercase tracking-widest"
+            title="Copy pointer redirect URL"
+          >
+            <Link className="h-3.5 w-3.5" /> {copiedRedirect ? 'Copied Redirect!' : 'Copy Pointer Link'}
+          </button>
+        </div>
       </div>
     </motion.div>
   );

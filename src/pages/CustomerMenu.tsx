@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { db } from '../lib/firebase';
+import { db, auth } from '../lib/firebase';
 import { 
   collection, 
   query, 
@@ -105,12 +105,14 @@ export default function CustomerMenu() {
       setLoading(false);
       
       try {
-        // Fetch past orders in the background so it doesn't delay menu rendering
-        const qPath = 'orders';
-        const ordersQ = query(collection(db, qPath), where('restaurantId', '==', restaurantId));
-        getDocs(ordersQ).then(ordersSnap => {
-          setPastOrders(ordersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order)));
-        }).catch(err => console.error("Error fetching past orders", err));
+        // Fetch past orders in the background only if there's an authenticated session (staff/owner)
+        if (auth.currentUser) {
+          const qPath = 'orders';
+          const ordersQ = query(collection(db, qPath), where('restaurantId', '==', restaurantId));
+          getDocs(ordersQ).then(ordersSnap => {
+            setPastOrders(ordersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order)));
+          }).catch(err => console.error("Error fetching past orders", err));
+        }
       } catch (error) {
         console.error("Error setting up orders fetch", error);
       }

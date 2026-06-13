@@ -1499,12 +1499,14 @@ function OrderCard({ order, updateStatus, statusMap, businessType, onViewInvoice
             </ul>
              <div className="flex items-center justify-between border-t border-neutral-100 pt-3">
               <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">{new Date(order.createdAt?.toDate?.() || order.createdAt).toLocaleTimeString(undefined, {hour: '2-digit', minute:'2-digit'})}</span>
-              <button 
-                onClick={(e) => { e.stopPropagation(); onViewInvoice(order); }}
-                className="flex items-center gap-1.5 rounded-xl border border-neutral-200 bg-neutral-50 hover:bg-neutral-100 hover:text-black transition-all active:scale-95 px-3 py-1.5 text-[10px] font-black tracking-wider uppercase text-neutral-600"
-              >
-                <Receipt className="h-3 w-3" /> Gen Bill
-              </button>
+              {order.status === 'COMPLETED' && (
+                <button 
+                  onClick={(e) => { e.stopPropagation(); onViewInvoice(order); }}
+                  className="flex items-center gap-1.5 rounded-xl border border-neutral-200 bg-neutral-50 hover:bg-neutral-100 hover:text-black transition-all active:scale-95 px-3 py-1.5 text-[10px] font-black tracking-wider uppercase text-neutral-600"
+                >
+                  <Receipt className="h-3 w-3" /> Gen Bill
+                </button>
+              )}
             </div>
           </motion.div>
         )}
@@ -1603,12 +1605,18 @@ function MenuTab({ restaurantId, businessType }: { restaurantId: string, busines
         })
       });
 
-      if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.error || 'AI autofill failed');
+      const textRes = await response.text();
+      let data;
+      try {
+        data = JSON.parse(textRes);
+      } catch (err) {
+        console.error("Failed to parse JSON. Raw response:", textRes);
+        throw new Error("AI generated an invalid response. Please try again.");
       }
 
-      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || 'AI autofill failed');
+      }
       
       // Auto populate the manual editing form with the smart AI details
       setForm({

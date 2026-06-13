@@ -813,7 +813,7 @@ function OrderStatusView({ order, restaurantName, googleMapReviewLink, businessT
           </div>
         )}
 
-        {order.status !== 'CANCELLED' && (
+        {order.status === 'COMPLETED' && (
           <div className="mt-4">
             <button
               onClick={() => setShowInvoiceModal(true)}

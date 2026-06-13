@@ -108,6 +108,7 @@ Provide:
 5. "volume": If it is a drink/beverage, recommend standard like "300 ml", else leave blank "".
 `;
 
+    console.log(`[API] Gemini request received for: ${itemName} (${businessType})`);
     const response = await ai.models.generateContent({
       model: "gemini-3.5-flash",
       contents: prompt,
@@ -127,15 +128,22 @@ Provide:
       }
     });
 
+    console.log(`[API] Gemini raw response:`, JSON.stringify(response, null, 2));
     const bodyText = response.text || "{}";
-    const data = JSON.parse(bodyText.trim());
+    let data;
+    try {
+      data = JSON.parse(bodyText.trim());
+    } catch(e) {
+      console.error("[API] Failed to parse Gemini response text:", bodyText);
+      throw new Error("Unable to parse AI response.");
+    }
     
     // Auto-map high resolution stock imagery
-    data.imageUrl = getImageUrlForProduct(data.name || itemName, businessType);
-    
+    data.imageUrl = getImageUrlForProduct(data.name || itemName, businessType || "food");
+    console.log(`[API] Gemini success. Responding with JSON.`);
     res.json(data);
   } catch (error: any) {
-    console.error("Gemini Quick Add Error:", error);
+    console.error("[API] Gemini Quick Add Error:", error);
     res.status(500).json({ error: error?.message || "Internal generation failed" });
   }
 });

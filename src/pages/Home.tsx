@@ -178,7 +178,7 @@ export default function Home() {
   };
 
   if (loading) return (
-    <SleekLoader message="Authenticating credentials" />
+    <SleekLoader message="Please wait..." />
   );
 
   return (

@@ -300,7 +300,7 @@ export default function CustomerMenu() {
   };
 
   if (loading && !restaurant) return (
-    <SleekLoader message="Synchronizing with regional outlet" />
+    <SleekLoader message="Loading Menu..." />
   );
 
   if (!restaurant) return <div>Restaurant not found</div>;

@@ -801,7 +801,7 @@ export default function OwnerDashboard() {
   };
 
   if (loading || !restaurant) return (
-    <SleekLoader message="Launching Merchant Workspace" />
+    <SleekLoader message="Opening Dashboard..." />
   );
 
   const isFoodBiz = ['hotel', 'restaurant', 'fastfood', 'fast food', 'cafe'].includes(restaurant.businessType?.toLowerCase() || '');

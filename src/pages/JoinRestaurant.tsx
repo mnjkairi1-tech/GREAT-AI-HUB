@@ -55,7 +55,7 @@ export default function JoinRestaurant() {
     }
   };
 
-  if (loading) return <SleekLoader message="Retrieving invitation profile" />;
+  if (loading) return <SleekLoader message="Loading Profile..." />;
 
   return (
     <div className="flex h-screen items-center justify-center p-4">

@@ -32,7 +32,7 @@ export default function InvoiceModal({ isOpen, onClose, order, restaurantName, b
   const [showTaxes, setShowTaxes] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
 
-  // Default Tax rates and codes under CGST Rules in India
+  // Default Tax rates under CGST Rules in India
   const getDefaultRate = () => {
     switch (businessType.toLowerCase()) {
       case 'salon': return 18; // Beauty salons represent 18% regular services GST
@@ -40,16 +40,6 @@ export default function InvoiceModal({ isOpen, onClose, order, restaurantName, b
       case 'general store':
       case 'store': return 12; // Standard average retail goods slab
       default: return 5;       // Standalone restaurant services without Input Tax Credit are 5% under Notification 11/2017-Central Tax
-    }
-  };
-
-  const getSACSACCode = () => {
-    switch (businessType.toLowerCase()) {
-      case 'salon': return 'SAC 999721';
-      case 'clinic': return 'SAC 999311 (Exempt)';
-      case 'general store':
-      case 'store': return 'HSN 996111';
-      default: return 'SAC 996331';
     }
   };
 
@@ -64,31 +54,25 @@ export default function InvoiceModal({ isOpen, onClose, order, restaurantName, b
   });
 
   const [gstin, setGstin] = useState<string>(() => {
-    return localStorage.getItem(`gstin_${restaurantName}`) || '27AAPCU1234M1Z5'; // Standard Maharashtra template code
+    return localStorage.getItem(`gstin_${restaurantName}`) || '27AAPCU1234M1Z5'; // Standard Maha template code
   });
 
   const [fssai, setFssai] = useState<string>(() => {
     return localStorage.getItem(`fssai_${restaurantName}`) || '22724999000123'; // 14-digit FSSAI format
   });
 
-  const [stateName, setStateName] = useState<string>(() => {
-    return localStorage.getItem(`gst_state_${restaurantName}`) || 'Maharashtra (MH-27)';
-  });
-
   if (!isOpen) return null;
 
   // Save config logic
-  const handleSaveSettings = (rate: number, type: 'exclusive' | 'inclusive', gstStr: string, fssaiStr: string, stateStr: string) => {
+  const handleSaveSettings = (rate: number, type: 'exclusive' | 'inclusive', gstStr: string, fssaiStr: string) => {
     setGstRate(rate);
     setGstType(type);
     setGstin(gstStr);
     setFssai(fssaiStr);
-    setStateName(stateStr);
     localStorage.setItem(`gstrate_${restaurantName}`, String(rate));
     localStorage.setItem(`gsttype_${restaurantName}`, type);
     localStorage.setItem(`gstin_${restaurantName}`, gstStr);
     localStorage.setItem(`fssai_${restaurantName}`, fssaiStr);
-    localStorage.setItem(`gst_state_${restaurantName}`, stateStr);
   };
 
   // GST math breakdown with 50/50 CGST and SGST split (Intra-State flow is normal for storefronts)
@@ -118,7 +102,7 @@ export default function InvoiceModal({ isOpen, onClose, order, restaurantName, b
     grandTotal = baseTotal;
   }
 
-  // Format Date in human-readable English
+  // Format Date in human-readable format
   let orderDate = '';
   try {
     const dateObj = order.createdAt?.toDate ? order.createdAt.toDate() : new Date(order.createdAt);
@@ -152,7 +136,7 @@ export default function InvoiceModal({ isOpen, onClose, order, restaurantName, b
     }
   };
 
-  // Whatsapp and text receipt sharing with official Indian taxation header styling
+  // Whatsapp and text receipt sharing 
   const handleCopyText = () => {
     const itemsText = order.items
       .map(item => `${item.quantity}x ${item.name} - ₹${item.price * item.quantity}`)
@@ -162,27 +146,23 @@ export default function InvoiceModal({ isOpen, onClose, order, restaurantName, b
     const gstApplicable = showTaxes && gstRate > 0;
     const isFood = businessType.toLowerCase() === 'restaurant' || businessType.toLowerCase() === 'food' || businessType.toLowerCase() === 'cafe';
 
-    const textPayload = `*TAX INVOICE (GST COMPLIANT)*\n` +
+    const textPayload = `*INVOICE BILL*\n` +
       `*${restaurantName.toUpperCase()}*\n` +
       `-----------------------------\n` +
       `${gstApplicable ? `GSTIN: ${gstin}\n` : ''}` +
       `${isFood ? `FSSAI Lic No: ${fssai}\n` : ''}` +
-      `State: ${stateName}\n` +
-      `SAC/HSN Code: ${getSACSACCode()}\n` +
       `Invoice ID: #${order.id.slice(0, 8).toUpperCase()}\n` +
       `Date: ${orderDate}\n` +
-      `${businessType === 'Salon' || businessType === 'Clinic' ? 'Staff Code' : 'Table/Token'}: ${order.tableNo}\n` +
+      `${businessType === 'Salon' || businessType === 'Clinic' ? 'Staff Code' : 'Table'}: ${order.tableNo}\n` +
       `Customer Name: ${order.customerName || 'Walk-in'}\n` +
       `-----------------------------\n` +
       `*ITEMS PURCHASED:*\n${itemsText}\n` +
       `-----------------------------\n` +
-      `Assessable Value (Subtotal): ₹${subtotal.toFixed(2)}\n` +
+      `Subtotal: ₹${subtotal.toFixed(2)}\n` +
       (gstApplicable ? `CGST (${(gstRate / 2).toFixed(1)}%): ₹${cgst.toFixed(2)}\nSGST (${(gstRate / 2).toFixed(1)}%): ₹${sgst.toFixed(2)}\n` : '') +
-      `*Grand Total Due: ₹${grandTotal.toFixed(2)}*\n` +
+      `*Grand Total: ₹${grandTotal.toFixed(2)}*\n` +
       `-----------------------------\n` +
-      `GST Calculation Mode: ${gstType.toUpperCase()}\n` +
-      `Thank you for business with us!\n` +
-      `*(Invoice of Goods & Services under Section 31 of Central tax Act, 2017)*`;
+      `Thank you for clean orders with us!\n`;
 
     navigator.clipboard.writeText(textPayload);
     setCopied(true);
@@ -245,8 +225,8 @@ export default function InvoiceModal({ isOpen, onClose, order, restaurantName, b
             <div className="flex items-center gap-2">
               <Receipt className="h-5 w-5 text-neutral-800 animate-pulse" />
               <div>
-                <span className="font-bold text-neutral-900 text-sm block">Indian Tax Invoice</span>
-                <span className="text-[10px] text-neutral-400 font-bold uppercase tracking-wider block">GST Compliant Billing</span>
+                <span className="font-bold text-neutral-900 text-sm block">Invoice Bill</span>
+                <span className="text-[10px] text-neutral-400 font-bold uppercase tracking-wider block">GST Compliant</span>
               </div>
             </div>
             
@@ -281,22 +261,22 @@ export default function InvoiceModal({ isOpen, onClose, order, restaurantName, b
                 className="bg-white border-b border-orange-100 p-4 font-sans text-xs text-neutral-700 space-y-3 overflow-hidden shadow-inner print:hidden"
               >
                 <div className="flex items-center gap-1.5 font-black text-neutral-800 border-b border-neutral-100 pb-1.5 text-[10px] uppercase tracking-wider">
-                  <Scale className="h-3.5 w-3.5 text-orange-600" /> Lawful GST & Registration Setup
+                  <Scale className="h-3.5 w-3.5 text-orange-600" /> GST & Licence Setup
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[10px] font-bold text-neutral-500 uppercase mb-1">GST Slabs (Standard India)</label>
+                    <label className="block text-[10px] font-bold text-neutral-500 uppercase mb-1">GST Percentage</label>
                     <select
                       value={gstRate}
-                      onChange={(e) => handleSaveSettings(Number(e.target.value), gstType, gstin, fssai, stateName)}
+                      onChange={(e) => handleSaveSettings(Number(e.target.value), gstType, gstin, fssai)}
                       className="w-full rounded-xl border-neutral-200 p-2 text-xs font-semibold focus:border-orange-500 focus:ring focus:ring-orange-100 bg-neutral-50"
                     >
-                      <option value={0}>0% (Tax-Exempt / Clinical Care)</option>
-                      <option value={5}>5% (standalone Food Joints / No ITC)</option>
-                      <option value={12}>12% (Standard Retail Goods / Kirana)</option>
-                      <option value={18}>18% (Standard Beauty Salons & Services)</option>
-                      <option value={28}>28% (Luxury Segment)</option>
+                      <option value={0}>0% GST (Tax Exempt)</option>
+                      <option value={5}>5% GST (Restaurants/Food)</option>
+                      <option value={12}>12% GST (Retail Goods)</option>
+                      <option value={18}>18% GST (Services / Salons)</option>
+                      <option value={28}>28% GST (Luxury Slab)</option>
                     </select>
                   </div>
 
@@ -304,13 +284,13 @@ export default function InvoiceModal({ isOpen, onClose, order, restaurantName, b
                     <label className="block text-[10px] font-bold text-neutral-500 uppercase mb-1">Taxes Formula</label>
                     <div className="flex bg-neutral-100 p-0.5 rounded-xl">
                       <button
-                        onClick={() => handleSaveSettings(gstRate, 'exclusive', gstin, fssai, stateName)}
+                        onClick={() => handleSaveSettings(gstRate, 'exclusive', gstin, fssai)}
                         className={`flex-1 py-1 px-2 rounded-lg text-[10px] font-bold transition-all ${gstType === 'exclusive' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500'}`}
                       >
                         Extra (On Top)
                       </button>
                       <button
-                        onClick={() => handleSaveSettings(gstRate, 'inclusive', gstin, fssai, stateName)}
+                        onClick={() => handleSaveSettings(gstRate, 'inclusive', gstin, fssai)}
                         className={`flex-1 py-1 px-2 rounded-lg text-[10px] font-bold transition-all ${gstType === 'inclusive' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500'}`}
                       >
                         Inclusive
@@ -320,41 +300,30 @@ export default function InvoiceModal({ isOpen, onClose, order, restaurantName, b
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-bold text-neutral-500 uppercase mb-1">State GSTIN (15 Digits)</label>
+                  <div className="col-span-2 sm:col-span-1">
+                    <label className="block text-[10px] font-bold text-neutral-500 uppercase mb-1">Your GSTIN (15 Digits)</label>
                     <input
                       type="text"
                       value={gstin}
-                      onChange={(e) => handleSaveSettings(gstRate, gstType, e.target.value.toUpperCase().slice(0, 15), fssai, stateName)}
+                      onChange={(e) => handleSaveSettings(gstRate, gstType, e.target.value.toUpperCase().slice(0, 15), fssai)}
                       placeholder="27AAPCU1234M1Z5"
                       className="w-full rounded-xl border-neutral-200 p-2 text-xs font-mono bg-neutral-50 focus:bg-white"
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-[10px] font-bold text-neutral-500 uppercase mb-1">Place of Supply (POS State)</label>
-                    <input
-                      type="text"
-                      value={stateName}
-                      onChange={(e) => handleSaveSettings(gstRate, gstType, gstin, fssai, e.target.value)}
-                      placeholder="Maharashtra (MH-27)"
-                      className="w-full rounded-xl border-neutral-200 p-2 text-xs bg-neutral-50 focus:bg-white"
-                    />
-                  </div>
+                  {(businessType.toLowerCase() === 'restaurant' || businessType.toLowerCase() === 'food' || businessType.toLowerCase() === 'cafe') && (
+                    <div className="col-span-2 sm:col-span-1">
+                      <label className="block text-[10px] font-bold text-neutral-500 uppercase mb-1">FSSAI Licence Number</label>
+                      <input
+                        type="text"
+                        value={fssai}
+                        onChange={(e) => handleSaveSettings(gstRate, gstType, gstin, e.target.value.replace(/\D/g, '').slice(0, 14))}
+                        placeholder="22724999000123"
+                        className="w-full rounded-xl border-neutral-200 p-2 text-xs font-mono bg-neutral-50 focus:bg-white"
+                      />
+                    </div>
+                  )}
                 </div>
-
-                {(businessType.toLowerCase() === 'restaurant' || businessType.toLowerCase() === 'food' || businessType.toLowerCase() === 'cafe') && (
-                  <div>
-                    <label className="block text-[10px] font-bold text-neutral-500 uppercase mb-1">FSSAI Licence Number (14 Digits)</label>
-                    <input
-                      type="text"
-                      value={fssai}
-                      onChange={(e) => handleSaveSettings(gstRate, gstType, gstin, e.target.value.replace(/\D/g, '').slice(0, 14), stateName)}
-                      placeholder="22724999000123"
-                      className="w-full rounded-xl border-neutral-200 p-2 text-xs font-mono bg-neutral-50 focus:bg-white"
-                    />
-                  </div>
-                )}
               </motion.div>
             )}
           </AnimatePresence>
@@ -372,7 +341,7 @@ export default function InvoiceModal({ isOpen, onClose, order, restaurantName, b
                 onClick={() => setPrintTemplate('modern')}
                 className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all ${printTemplate === 'modern' ? 'bg-white text-neutral-900 shadow-sm' : 'hover:text-neutral-900'}`}
               >
-                <FileText className="h-3 w-3" /> Premium A4 Invoice
+                <FileText className="h-3 w-3" /> Premium A4 Bill
               </button>
             </div>
 
@@ -403,34 +372,29 @@ export default function InvoiceModal({ isOpen, onClose, order, restaurantName, b
                   <div className="text-center">
                     <div className="flex justify-center mb-1 print:hidden">{getBusinessIcon()}</div>
                     <h2 className="text-base font-black tracking-tight uppercase text-neutral-900">{restaurantName}</h2>
-                    <p className="text-[9px] text-neutral-500 uppercase mt-0.5 tracking-wider font-extrabold">- TAX INVOICE -</p>
-                    <p className="text-[8px] text-neutral-400 mt-0.5 select-all">Intra-State Supply (CGST & SGST Split)</p>
+                    <p className="text-[9px] text-neutral-500 uppercase mt-0.5 tracking-wider font-extrabold">- BILL BILL -</p>
                   </div>
 
-                  {/* Indian statutory numbers thermal display */}
-                  <div className="border-b border-dashed border-neutral-300 my-1" />
-                  <div className="text-[9px] text-neutral-600 font-mono tracking-tight space-y-0.5">
-                    {showTaxes && gstRate > 0 && (
-                      <div className="flex justify-between">
-                        <span>GSTIN:</span>
-                        <span className="font-bold text-neutral-900">{gstin}</span>
+                  {/* Indian statutory numbers thermal display (Simple & Clean) */}
+                  {(showTaxes && gstRate > 0) || ((businessType.toLowerCase() === 'restaurant' || businessType.toLowerCase() === 'food' || businessType.toLowerCase() === 'cafe')) ? (
+                    <>
+                      <div className="border-b border-dashed border-neutral-300 my-1" />
+                      <div className="text-[9px] text-neutral-600 font-mono tracking-tight space-y-0.5">
+                        {showTaxes && gstRate > 0 && (
+                          <div className="flex justify-between">
+                            <span>GSTIN:</span>
+                            <span className="font-bold text-neutral-900">{gstin}</span>
+                          </div>
+                        )}
+                        {(businessType.toLowerCase() === 'restaurant' || businessType.toLowerCase() === 'food' || businessType.toLowerCase() === 'cafe') && (
+                          <div className="flex justify-between">
+                            <span>FSSAI NO:</span>
+                            <span className="font-bold text-neutral-900">{fssai}</span>
+                          </div>
+                        )}
                       </div>
-                    )}
-                    {(businessType.toLowerCase() === 'restaurant' || businessType.toLowerCase() === 'food' || businessType.toLowerCase() === 'cafe') && (
-                      <div className="flex justify-between">
-                        <span>FSSAI NO:</span>
-                        <span className="font-bold text-neutral-900">{fssai}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between">
-                      <span>POS STATE:</span>
-                      <span className="font-bold text-neutral-900">{stateName}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>SERVICE SAC:</span>
-                      <span className="font-bold text-neutral-900">{getSACSACCode()}</span>
-                    </div>
-                  </div>
+                    </>
+                  ) : null}
 
                   <div className="border-b border-dashed border-neutral-300 my-2" />
 
@@ -488,7 +452,7 @@ export default function InvoiceModal({ isOpen, onClose, order, restaurantName, b
                   {/* Dual split CGST + SGST pricing breakdown */}
                   <div className="space-y-1.5 text-xs text-neutral-700">
                     <div className="flex justify-between">
-                      <span>ASSESSABLE VALUE (SUB):</span>
+                      <span>SUBTOTAL:</span>
                       <span className="font-mono font-bold">₹{subtotal.toFixed(2)}</span>
                     </div>
                     {showTaxes && gstRate > 0 ? (
@@ -501,10 +465,6 @@ export default function InvoiceModal({ isOpen, onClose, order, restaurantName, b
                           <span>SGST ({(gstRate / 2).toFixed(1)}%):</span>
                           <span className="font-mono">₹{sgst.toFixed(2)}</span>
                         </div>
-                        <div className="flex justify-between text-[9px] text-neutral-400 italic">
-                          <span>GST Calculation mode:</span>
-                          <span className="uppercase font-bold text-[8px]">{gstType} price</span>
-                        </div>
                       </>
                     ) : (
                       <div className="flex justify-between text-neutral-500">
@@ -514,36 +474,29 @@ export default function InvoiceModal({ isOpen, onClose, order, restaurantName, b
                     )}
                     <div className="border-b border-dotted border-neutral-200 my-1.5" />
                     <div className="flex justify-between font-black text-sm text-neutral-900 bg-neutral-100 p-1 rounded">
-                      <span>NET REMITTANCE:</span>
+                      <span>NET AMOUNT:</span>
                       <span className="font-bold">₹{grandTotal.toFixed(2)}</span>
                     </div>
                   </div>
 
                   <div className="border-b border-dashed border-neutral-300 my-3" />
 
-                  {/* Real-world Thermal barcode visualizer & act compliance notes */}
-                  <div className="text-center space-y-3">
-                    <p className="text-[9px] text-neutral-500 font-bold uppercase tracking-widest font-sans">*** HAMEESHA SAME QUALITY SERVICE ***</p>
-                    <div className="flex flex-col items-center justify-center opacity-70">
-                      <div className="font-mono tracking-[0.2em] text-[18px] select-none text-neutral-900 font-bold leading-none">
-                        ||||| | ||| || |||| | ||
-                      </div>
-                      <span className="text-[7px] font-mono mt-1 text-neutral-400">Section 31 of CGST Act Invoice #{order.id.slice(0, 10).toUpperCase()}</span>
-                    </div>
+                  <div className="text-center">
+                    <p className="text-[9px] text-neutral-500 font-bold uppercase tracking-widest font-sans">*** THANK YOU FOR VISITING ***</p>
                   </div>
                 </div>
               ) : (
                 /* Receipt Template: PREMIUM A4 INVOICE */
-                <div className="space-y-6">
+                <div className="space-y-6 animate-fade-in">
                   {/* Tax invoice header complying section 31 CGST */}
                   <div className="flex items-start justify-between border-b border-neutral-100 pb-4">
                     <div>
-                      <div className="flex items-center gap-2 mb-1.5">
+                      <div className="flex items-center gap-2 mb-1.5 animate-fadeIn">
                         {getBusinessIcon()}
                         <h2 className="text-lg font-black tracking-tight text-neutral-900">{restaurantName}</h2>
                       </div>
-                      <p className="text-[10px] text-neutral-500 uppercase font-black tracking-widest bg-neutral-100 px-2 py-0.5 rounded-full inline-block">
-                        Tax Invoice (Intra-State)
+                      <p className="text-[10px] text-neutral-500 uppercase font-black tracking-widest bg-neutral-100 px-2 by-0.5 rounded-full inline-block">
+                        Retail Bill
                       </p>
                     </div>
                     
@@ -557,21 +510,20 @@ export default function InvoiceModal({ isOpen, onClose, order, restaurantName, b
                     </div>
                   </div>
 
-                  {/* Indian Tax Registered statutory numbers info block */}
-                  <div className="grid grid-cols-2 gap-4 bg-neutral-50 p-4 rounded-xl border border-neutral-100 text-xs">
+                  {/* Clean Recipient & Identity Block */}
+                  <div className="grid grid-cols-2 gap-4 bg-neutral-50/50 p-4 rounded-xl border border-neutral-100 text-xs text-neutral-600">
                     <div>
-                      <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest block mb-1.5">Recipient Particulars</span>
+                      <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest block mb-1.5">Customer Details</span>
                       <div className="flex items-center gap-1.5">
-                        <User className="h-3 w-3 text-neutral-400" />
+                        <User className="h-3.5 w-3.5 text-neutral-400" />
                         <span className="font-bold text-neutral-800">{order.customerName || 'Walk-in Customer'}</span>
                       </div>
-                      <span className="text-neutral-500 block mt-1">Table/Code No: <strong className="text-neutral-800">{order.tableNo}</strong></span>
-                      <span className="text-neutral-500 block">Supply State: <strong className="text-neutral-800">{stateName}</strong></span>
+                      <span className="text-neutral-500 block mt-1">Table/Code: <strong className="text-neutral-800">{order.tableNo}</strong></span>
                     </div>
 
                     <div className="text-right space-y-0.5">
-                      <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest block mb-1.5">GST Registration Details</span>
-                      <span className="text-neutral-500 block">Tax Invoice No: <strong className="text-neutral-800 font-mono">#{order.id.slice(0, 8).toUpperCase()}</strong></span>
+                      <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest block mb-1.5">Bill Details</span>
+                      <span className="text-neutral-500 block">Inv ID: <strong className="text-neutral-800 font-mono">#{order.id.slice(0, 8).toUpperCase()}</strong></span>
                       <span className="text-neutral-500 block">Date: <strong className="text-neutral-800">{orderDate.split(',')[0]}</strong></span>
                       {showTaxes && gstRate > 0 && <span className="text-neutral-500 block">GSTIN: <strong className="text-neutral-800 font-mono">{gstin}</strong></span>}
                       {(businessType.toLowerCase() === 'restaurant' || businessType.toLowerCase() === 'food' || businessType.toLowerCase() === 'cafe') && <span className="text-neutral-500 block">FSSAI Licence: <strong className="text-neutral-800 font-mono">{fssai}</strong></span>}
@@ -580,7 +532,6 @@ export default function InvoiceModal({ isOpen, onClose, order, restaurantName, b
 
                   {/* Items billing table */}
                   <div className="space-y-2">
-                    <span className="text-[10px] text-neutral-400 font-bold uppercase tracking-widest block mb-1">Schedule of Service / HSN-SAC</span>
                     <div className="border border-neutral-100 rounded-xl overflow-hidden shadow-sm bg-white">
                       <table className="w-full text-xs text-left">
                         <thead className="bg-neutral-50 border-b border-neutral-100 text-neutral-500 font-bold uppercase tracking-wider text-[9px]">
@@ -588,7 +539,7 @@ export default function InvoiceModal({ isOpen, onClose, order, restaurantName, b
                             <th className="p-3">Item Description</th>
                             <th className="p-3 text-center">Qty</th>
                             <th className="p-3 text-right">Unit Rate</th>
-                            <th className="p-3 text-right">Taxable Value</th>
+                            <th className="p-3 text-right">Amount</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-neutral-100 text-neutral-600 font-medium">
@@ -596,7 +547,6 @@ export default function InvoiceModal({ isOpen, onClose, order, restaurantName, b
                             <tr key={index} className="hover:bg-neutral-50/50">
                               <td className="p-3">
                                 <div className="font-semibold text-neutral-800">{item.name}</div>
-                                <div className="text-[10px] text-neutral-400">{getSACSACCode()}</div>
                               </td>
                               <td className="p-3 text-center font-bold text-neutral-800">{item.quantity}N</td>
                               <td className="p-3 text-right">₹{item.price.toFixed(2)}</td>
@@ -608,49 +558,42 @@ export default function InvoiceModal({ isOpen, onClose, order, restaurantName, b
                     </div>
                   </div>
 
-                  {/* Indian Tax computations CGST & SGST */}
+                  {/* Clean Tax computations */}
                   <div className="flex justify-end pt-2 border-t border-neutral-100">
                     <div className="w-60 text-xs space-y-2">
                       <div className="flex justify-between text-neutral-500 font-medium">
-                        <span>Assessable Value (Subtotal):</span>
+                        <span>Subtotal:</span>
                         <span className="font-semibold text-neutral-800">₹{subtotal.toFixed(2)}</span>
                       </div>
                       
                       {showTaxes && gstRate > 0 ? (
                         <>
                           <div className="flex justify-between text-neutral-500 font-medium">
-                            <span>Central Tax (CGST {(gstRate / 2).toFixed(1)}%):</span>
+                            <span>CGST ({(gstRate / 2).toFixed(1)}%):</span>
                             <span className="font-semibold text-neutral-800">₹{cgst.toFixed(2)}</span>
                           </div>
                           <div className="flex justify-between text-neutral-500 font-medium">
-                            <span>State Tax (SGST {(gstRate / 2).toFixed(1)}%):</span>
+                            <span>SGST ({(gstRate / 2).toFixed(1)}%):</span>
                             <span className="font-semibold text-neutral-800">₹{sgst.toFixed(2)}</span>
-                          </div>
-                          <div className="flex justify-between text-[10px] text-neutral-400 bg-neutral-50 p-1.5 rounded-lg">
-                            <span>GST Math Mode:</span>
-                            <span className="font-extrabold uppercase">{gstType} pricing</span>
                           </div>
                         </>
                       ) : (
                         <div className="flex justify-between text-emerald-600 font-extrabold bg-emerald-50 p-1.5 rounded-lg text-[10px]">
-                          <span>GST Remittance:</span>
-                          <span className="uppercase">Exempt / Zero-rated</span>
+                          <span>Taxes:</span>
+                          <span className="uppercase font-bold">Tax Exempt</span>
                         </div>
                       )}
 
                       <div className="border-t border-neutral-100 pt-2 flex justify-between font-black text-xs text-neutral-900 uppercase">
-                        <span>Total Due (INR):</span>
+                        <span>Total GST due:</span>
                         <span className="text-orange-600 text-sm">₹{grandTotal.toFixed(2)}</span>
                       </div>
                     </div>
                   </div>
 
-                  {/* Stamp visual signature and disclaimer line */}
-                  <div className="text-center bg-orange-50/20 p-4 rounded-xl border border-orange-100/50 space-y-1">
-                    <p className="text-xs font-bold text-neutral-700">Thank you for opting {restaurantName}!</p>
-                    <p className="text-[9px] text-neutral-400 font-medium italic">
-                      "Certified that the particulars given above are true and correct under section 31 of CGST Act, 2017."
-                    </p>
+                  {/* Warm note */}
+                  <div className="text-center bg-orange-50/10 p-4 rounded-xl border border-orange-100/30">
+                    <p className="text-xs font-bold text-neutral-750">Thank you for visiting {restaurantName}!</p>
                   </div>
                 </div>
               )}

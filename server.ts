@@ -149,6 +149,82 @@ Provide:
 });
 
 // Vite middleware for development
+// Bulk REST API for Gemini AI Quick Add
+app.post("/api/gemini/generate-menu-items-bulk", async (req, res) => {
+  const { promptText, businessType } = req.body;
+
+  if (!promptText) {
+    return res.status(400).json({ error: "Prompt text is required" });
+  }
+
+  try {
+    const prompt = `You are a professional copywriter mapping products/services for a "${businessType}".
+Analyze the following user input which contains a list of items/services and possibly prices.
+Input: """${promptText}"""
+
+Extract all the individual items mentioned. For each item, fill in beautiful properties like category recommendation, and a beautiful short commercial description (12-23 words).
+
+Choose the single most appropriate category for each item:
+- For Salon businessType: choose one of ["Hair", "Face", "Spa & Massage", "Other Services"]
+- For Clinic businessType: choose one of ["Consultation", "Diagnostics", "Treatment", "Other Services"]
+- For any other businessType (Food etc): choose one of ["Main Course", "Snacks", "Drinks", "Desserts"]
+
+Return a JSON array where each object has these exact properties:
+1. "name": Formatted beautifully with initial caps.
+2. "price": Suggested price in Rupees (INR) as a number (use the one provided in input, else suggest a reasonable mid-range market price).
+3. "category": The exact category selected from the list above.
+4. "description": A sensory-rich, professional, tasting/service description. Make it sound premium!
+5. "volume": If it is a drink/beverage, recommend standard like "300 ml", else leave blank "".
+`;
+
+    console.log(`[API] Gemini bulk request received for businessType: ${businessType}`);
+    const response = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              name: { type: Type.STRING },
+              price: { type: Type.NUMBER },
+              category: { type: Type.STRING },
+              description: { type: Type.STRING },
+              volume: { type: Type.STRING }
+            },
+            required: ["name", "price", "category", "description"]
+          }
+        }
+      }
+    });
+
+    const bodyText = response.text || "[]";
+    let dataList;
+    try {
+      dataList = JSON.parse(bodyText.trim());
+      if (!Array.isArray(dataList)) {
+        dataList = [dataList];
+      }
+    } catch(e) {
+      console.error("[API] Failed to parse Gemini bulk response text:", bodyText);
+      throw new Error("Unable to parse AI response.");
+    }
+    
+    // Auto-map high resolution stock imagery
+    for (const item of dataList) {
+      item.imageUrl = getImageUrlForProduct(item.name, businessType || "food");
+    }
+
+    console.log(`[API] Gemini bulk success. Responding with ${dataList.length} items.`);
+    res.json(dataList);
+  } catch (error: any) {
+    console.error("[API] Gemini Bulk Add Error:", error);
+    res.status(500).json({ error: error?.message || "Internal generation failed" });
+  }
+});
+
 let startPromise: Promise<void> | undefined;
 if (process.env.NODE_ENV !== "production") {
   startPromise = createViteServer({

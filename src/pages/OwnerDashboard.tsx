@@ -1580,63 +1580,66 @@ function MenuTab({ restaurantId, businessType }: { restaurantId: string, busines
   const [searchTerm, setSearchTerm] = useState('');
   const navigate = useNavigate();
 
-  // AI Quick Add states
+  // AI Bulk Quick Add states
   const [isAiQuickAddOpen, setIsAiQuickAddOpen] = useState(false);
-  const [aiItemName, setAiItemName] = useState('');
-  const [aiItemPrice, setAiItemPrice] = useState('');
+  const [aiPromptText, setAiPromptText] = useState('');
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiError, setAiError] = useState('');
 
   const handleAiGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!aiItemName.trim()) return;
+    if (!aiPromptText.trim()) return;
     setAiGenerating(true);
     setAiError('');
     try {
-      const response = await fetch('/api/gemini/generate-menu-item', {
+      const response = await fetch('/api/gemini/generate-menu-items-bulk', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          itemName: aiItemName,
-          price: aiItemPrice || null,
+          promptText: aiPromptText,
           businessType: businessType
         })
       });
 
       const textRes = await response.text();
-      let data;
+      let dataList;
       try {
-        data = JSON.parse(textRes);
+        dataList = JSON.parse(textRes);
       } catch (err) {
         console.error("Failed to parse JSON. Raw response:", textRes);
         throw new Error("AI generated an invalid response. Please try again.");
       }
 
       if (!response.ok) {
-        throw new Error(data?.error || 'AI autofill failed');
+        throw new Error(dataList?.error || 'AI bulk add failed');
       }
       
-      // Auto populate the manual editing form with the smart AI details
-      setForm({
-        name: data.name || aiItemName,
-        price: (data.price || aiItemPrice || '199').toString(),
-        category: data.category || defaultCat,
-        description: data.description || '',
-        imageUrl: data.imageUrl || '',
-        stockCount: '0',
-        volume: data.volume || ''
+      // Auto save all generated items to Firestore directly!
+      const promises = dataList.map((item: any) => {
+        return addDoc(collection(db, 'menuItems'), {
+           restaurantId,
+           businessType,
+           name: item.name || 'Unknown Item',
+           price: parseFloat(item.price) || 0,
+           category: item.category || defaultCat,
+           description: item.description || '',
+           imageUrl: item.imageUrl || '',
+           stockCount: 0,
+           volume: item.volume || '',
+           isAvailable: true
+        });
       });
+      await Promise.all(promises);
 
-      // Show manual form so user can inspect, fine tune, or save
-      setIsFormOpen(true);
+      // Close formulation box and reset
       setIsAiQuickAddOpen(false);
-      setAiItemName('');
-      setAiItemPrice('');
+      setAiPromptText('');
+      alert(`Successfully added ${promises.length} items to your menu!`);
     } catch (err: any) {
       console.error(err);
-      setAiError(err.message || 'AI failed to generate details. Please fill manually.');
+      setAiError(err.message || 'AI failed to generate items. Please try again.');
     } finally {
       setAiGenerating(false);
     }
@@ -1825,57 +1828,46 @@ function MenuTab({ restaurantId, businessType }: { restaurantId: string, busines
             </div>
             
             <p className="text-xs text-neutral-500 mb-5 max-w-2xl leading-relaxed font-medium">
-              Just write the product or service name along with an optional price. Gemini will immediately format it, write a rich premium description, assign the best category, and auto-apply an exquisite matching stock photo!
+              Paste your menu or service list here (e.g. "Haircut 100, Face wash 50, Massage 200"). Gemini will extract them, write rich premium descriptions, assign categories, and bulk add them directly!
             </p>
 
-            <form onSubmit={handleAiGenerate} className="grid grid-cols-1 gap-4 md:grid-cols-3 items-end">
+            <form onSubmit={handleAiGenerate} className="flex flex-col gap-4">
               <div>
-                <label className="block text-xs font-bold text-neutral-400 mb-1.5 uppercase tracking-wider">Item / Service Name</label>
-                <input 
+                <label className="block text-xs font-bold text-neutral-400 mb-1.5 uppercase tracking-wider">Paste Menu List Here</label>
+                <textarea 
                   required
-                  type="text"
-                  placeholder={businessType === 'Salon' ? "e.g., Hydra Facial Care" : businessType === 'Clinic' ? "e.g., Pediatric Consultation" : "e.g., Paneer Butter Masala"}
-                  value={aiItemName}
-                  onChange={(e) => setAiItemName(e.target.value)}
-                  className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm font-semibold outline-none focus:border-orange-500 transition-colors"
+                  rows={3}
+                  placeholder={businessType === 'Salon' ? "e.g., Hydra Facial Care 500, Haircut 150, Shave 50" : businessType === 'Clinic' ? "e.g., Pediatric Consultation 500, Dental Checkup 200" : "e.g., Paneer Butter Masala 180, Roti 10, Dal Makhani 120"}
+                  value={aiPromptText}
+                  onChange={(e) => setAiPromptText(e.target.value)}
+                  className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm font-semibold outline-none focus:border-orange-500 transition-colors resize-y"
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-neutral-400 mb-1.5 uppercase tracking-wider">Price (Optional, ₹)</label>
-                <input 
-                  type="number"
-                  placeholder="Recommend best rate"
-                  value={aiItemPrice}
-                  onChange={(e) => setAiItemPrice(e.target.value)}
-                  className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm font-semibold outline-none focus:border-orange-500 transition-colors"
-                />
-              </div>
-
-              <div className="flex gap-2">
+              <div className="flex gap-2 self-end">
+                <button
+                  type="button"
+                  onClick={() => setIsAiQuickAddOpen(false)}
+                  className="rounded-2xl bg-neutral-100 hover:bg-neutral-200 text-neutral-600 h-11 px-6 font-bold text-sm"
+                >
+                  Cancel
+                </button>
                 <button
                   type="submit"
                   disabled={aiGenerating}
-                  className="flex-1 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 h-11 px-6 font-bold text-white shadow-md transition-all text-sm flex items-center justify-center gap-2 disabled:opacity-75"
+                  className="rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 h-11 px-6 font-bold text-white shadow-md transition-all text-sm flex items-center justify-center gap-2 disabled:opacity-75"
                 >
                   {aiGenerating ? (
                     <>
                       <RefreshCcw className="h-4 w-4 animate-spin text-white" />
-                      Generating with AI...
+                      Adding Items...
                     </>
                   ) : (
                     <>
                       <Sparkles className="h-4 w-4 text-white" />
-                      Generate Info
+                      Bulk AI Add
                     </>
                   )}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsAiQuickAddOpen(false)}
-                  className="rounded-2xl bg-neutral-100 hover:bg-neutral-200 text-neutral-600 h-11 px-4 font-bold text-sm"
-                >
-                  Cancel
                 </button>
               </div>
             </form>

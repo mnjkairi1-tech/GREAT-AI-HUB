@@ -52,6 +52,7 @@ import {
   CheckCircle,
   Truck,
   Link,
+  Receipt,
   Settings,
   ScanLine,
   LayoutList,
@@ -82,6 +83,7 @@ import { THEMES, getTheme, applyTheme } from '../themes';
 import { cn, formatCurrency, handleFirestoreError, OperationType } from '../lib/utils';
 import { MenuItem, Order, Restaurant, OrderStatus, QrTable, StaffMember, StoreCustomer, StaffPermission } from '../types';
 import { BUSINESS_TYPES } from '../constants';
+import InvoiceModal from '../components/InvoiceModal';
 
 const filterByBusinessType = <T extends { businessType?: string, category?: string }>(items: T[], currentType: string): T[] => {
   return items.filter(item => {
@@ -971,13 +973,13 @@ export default function OwnerDashboard() {
             {activeTab === 'home' && restaurant.businessType === 'General Store' ? <GeneralStorePos restaurant={restaurant} isStaff={isStaff} /> : activeTab === 'home' && <HomeTab restaurant={restaurant} setActiveTab={setActiveTab} isStaff={isStaff} />}
             {activeTab !== 'home' && restaurant.businessType === 'General Store' && (activeTab === 'orders' || activeTab === 'menu') ? null : (
               <>
-                {activeTab === 'orders' && canAccess('orders') && <OrdersTab restaurantId={restaurant.id} businessType={restaurant.businessType} />}
+                {activeTab === 'orders' && canAccess('orders') && <OrdersTab restaurantId={restaurant.id} businessType={restaurant.businessType} restaurantName={restaurant.name} />}
                 {activeTab === 'menu' && canAccess('menu') && <MenuTab restaurantId={restaurant.id} businessType={restaurant.businessType} />}
               </>
             )}
             {activeTab === 'customers' && canAccess('customers') && <StoreCustomersTab restaurant={restaurant} />}
             {activeTab === 'staff' && !isStaff && <StaffManagementTab restaurant={restaurant} setRestaurant={setRestaurant} />}
-            {activeTab === 'recent_sales' && (isFoodBiz || restaurant.businessType === 'General Store') && <RecentSalesTab restaurantId={restaurant.id} businessType={restaurant.businessType} staffMembers={restaurant.staffMembers || []} />}
+            {activeTab === 'recent_sales' && (isFoodBiz || restaurant.businessType === 'General Store') && <RecentSalesTab restaurantId={restaurant.id} businessType={restaurant.businessType} staffMembers={restaurant.staffMembers || []} restaurantName={restaurant.name} />}
             {activeTab === 'analytics' && !isStaff && canAccess('analytics') && <AnalyticsTab restaurantId={restaurant.id} businessType={restaurant.businessType} staffMembers={restaurant.staffMembers || []} />}
             {activeTab === 'staff_analytics' && canAccess('staff_analytics') && <StaffPerformanceAnalytics restaurantId={restaurant.id} staffMembers={restaurant.staffMembers || []} forceStaffView={isStaff} />}
             {activeTab === 'settings' && <SettingsTab onLogout={handleLogout} restaurant={restaurant} setRestaurant={setRestaurant} setActiveTab={setActiveTab} isStaff={isStaff} />}
@@ -1308,8 +1310,9 @@ function NavBtn({ active, onClick, icon, label, isLast, className }: { active: b
 }
 
 // --- TAB: Orders ---
-function OrdersTab({ restaurantId, businessType }: { restaurantId: string, businessType: string }) {
+function OrdersTab({ restaurantId, businessType, restaurantName }: { restaurantId: string, businessType: string, restaurantName: string }) {
   const [orders, setOrders] = useState<Order[]>([]);
+  const [selectedInvoice, setSelectedInvoice] = useState<Order | null>(null);
 
   useEffect(() => {
     const qPath = 'orders';
@@ -1346,22 +1349,32 @@ function OrdersTab({ restaurantId, businessType }: { restaurantId: string, busin
   const activeOrders = orders.filter(o => o.status !== 'COMPLETED' && o.status !== 'CANCELLED');
 
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 animate-in fade-in duration-300">
-      {activeOrders.length === 0 && (
-        <div className="col-span-full py-20 text-center">
-          <p className="text-neutral-400">Waiting for live orders...</p>
-        </div>
-      )}
-      <AnimatePresence>
-        {activeOrders.map((order) => (
-          <OrderCard key={order.id} order={order} updateStatus={updateStatus} statusMap={statusMap} businessType={businessType} />
-        ))}
-      </AnimatePresence>
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 animate-in fade-in duration-300">
+        {activeOrders.length === 0 && (
+          <div className="col-span-full py-20 text-center">
+            <p className="text-neutral-400">Waiting for live orders...</p>
+          </div>
+        )}
+        <AnimatePresence>
+          {activeOrders.map((order) => (
+            <OrderCard key={order.id} order={order} updateStatus={updateStatus} statusMap={statusMap} businessType={businessType} onViewInvoice={setSelectedInvoice} />
+          ))}
+        </AnimatePresence>
+      </div>
+
+      <InvoiceModal
+        isOpen={!!selectedInvoice}
+        onClose={() => setSelectedInvoice(null)}
+        order={selectedInvoice!}
+        restaurantName={restaurantName}
+        businessType={businessType}
+      />
     </div>
   );
 }
 
-function OrderCard({ order, updateStatus, statusMap, businessType }: { key?: React.Key, order: Order, updateStatus: (id: string, s: OrderStatus) => Promise<void>, statusMap: any, businessType: string }) {
+function OrderCard({ order, updateStatus, statusMap, businessType, onViewInvoice }: { key?: React.Key, order: Order, updateStatus: (id: string, s: OrderStatus) => Promise<void>, statusMap: any, businessType: string, onViewInvoice: (order: Order) => void }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -1409,7 +1422,13 @@ function OrderCard({ order, updateStatus, statusMap, businessType }: { key?: Rea
               ))}
             </ul>
              <div className="flex items-center justify-between border-t border-neutral-100 pt-3">
-              <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">{new Date(order.createdAt?.toDate()).toLocaleTimeString(undefined, {hour: '2-digit', minute:'2-digit'})}</span>
+              <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">{new Date(order.createdAt?.toDate?.() || order.createdAt).toLocaleTimeString(undefined, {hour: '2-digit', minute:'2-digit'})}</span>
+              <button 
+                onClick={(e) => { e.stopPropagation(); onViewInvoice(order); }}
+                className="flex items-center gap-1.5 rounded-xl border border-neutral-200 bg-neutral-50 hover:bg-neutral-100 hover:text-black transition-all active:scale-95 px-3 py-1.5 text-[10px] font-black tracking-wider uppercase text-neutral-600"
+              >
+                <Receipt className="h-3 w-3" /> Gen Bill
+              </button>
             </div>
           </motion.div>
         )}
@@ -2823,10 +2842,11 @@ function SalonProductInventory({ restaurant }: { restaurant: Restaurant }) {
 
 // --- TAB: Settings ---
 // --- Component: StaffRecentOrders ---
-function StaffRecentOrders({ restaurantId, businessType, staffMembers }: { restaurantId: string, businessType: string, staffMembers: StaffMember[] }) {
+function StaffRecentOrders({ restaurantId, businessType, staffMembers, restaurantName }: { restaurantId: string, businessType: string, staffMembers: StaffMember[], restaurantName: string }) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedReceipt, setSelectedReceipt] = useState<Order | null>(null);
 
   useEffect(() => {
     let unsub: () => void = () => {};
@@ -2900,6 +2920,7 @@ function StaffRecentOrders({ restaurantId, businessType, staffMembers }: { resta
                 <th className="px-5 py-3 font-bold uppercase tracking-wider text-[10px]">Customer</th>
                 <th className="px-5 py-3 font-bold uppercase tracking-wider text-[10px]">{businessType === 'Salon' ? 'Service/Table' : businessType === 'General Store' ? 'Processed By' : 'Table/Name'}</th>
                 <th className="px-5 py-3 text-right font-bold uppercase tracking-wider text-[10px]">Amount</th>
+                <th className="px-5 py-3 text-right font-bold uppercase tracking-wider text-[10px]">Receipt</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-50 text-neutral-600">
@@ -2920,6 +2941,15 @@ function StaffRecentOrders({ restaurantId, businessType, staffMembers }: { resta
                     <td className="px-5 py-4 font-medium text-neutral-900">{order.customerName || 'Walk-in'}</td>
                     <td className="px-5 py-4">{(businessType === 'Salon' || businessType === 'General Store') ? (!order.tableNo || order.tableNo === 'Unknown' ? 'Owner' : staffMembers?.find(s => s.code === order.tableNo)?.name || `Code: ${order.tableNo}`) : `Table ${order.tableNo}`}</td>
                     <td className="px-5 py-4 text-right font-black text-neutral-900">{formatCurrency(order.totalAmount || 0)}</td>
+                    <td className="px-5 py-4 text-right">
+                      <button 
+                        onClick={() => setSelectedReceipt(order)}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-neutral-200 bg-neutral-50 hover:bg-neutral-100 hover:text-black transition-all active:scale-95 px-3 py-1.5 text-[10px] font-black tracking-wider uppercase text-neutral-600"
+                        title="View & print invoice receipt"
+                      >
+                        <Receipt className="h-3.5 w-3.5 text-neutral-500" /> Bill
+                      </button>
+                    </td>
                   </tr>
                 );
               })}
@@ -2927,14 +2957,22 @@ function StaffRecentOrders({ restaurantId, businessType, staffMembers }: { resta
           </table>
         )}
       </div>
+
+      <InvoiceModal 
+        isOpen={!!selectedReceipt}
+        onClose={() => setSelectedReceipt(null)}
+        order={selectedReceipt!}
+        restaurantName={restaurantName}
+        businessType={businessType}
+      />
     </div>
   );
 }
 
-function RecentSalesTab({ restaurantId, businessType, staffMembers }: { restaurantId: string, businessType: string, staffMembers: StaffMember[] }) {
+function RecentSalesTab({ restaurantId, businessType, staffMembers, restaurantName }: { restaurantId: string, businessType: string, staffMembers: StaffMember[], restaurantName: string }) {
   return (
     <div className="mx-auto max-w-4xl">
-      <StaffRecentOrders restaurantId={restaurantId} businessType={businessType} staffMembers={staffMembers} />
+      <StaffRecentOrders restaurantId={restaurantId} businessType={businessType} staffMembers={staffMembers} restaurantName={restaurantName} />
     </div>
   );
 }

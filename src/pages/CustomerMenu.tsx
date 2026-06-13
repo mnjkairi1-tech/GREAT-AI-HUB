@@ -27,11 +27,13 @@ import {
   X,
   ArrowRight,
   BellRing,
-  Check
+  Check,
+  Receipt
 } from 'lucide-react';
 import { cn, formatCurrency, handleFirestoreError, OperationType } from '../lib/utils';
 import { MenuItem, Restaurant, OrderItem, Order } from '../types';
 import { applyTheme } from '../themes';
+import InvoiceModal from '../components/InvoiceModal';
 
 export default function CustomerMenu() {
   const { restaurantId, tableNo } = useParams<{ restaurantId: string, tableNo: string }>();
@@ -584,6 +586,7 @@ function OrderStatusView({ order, restaurantName, googleMapReviewLink, businessT
   const [newStaffCode, setNewStaffCode] = useState(order.tableNo);
   const [hasEditedStaffCode, setHasEditedStaffCode] = useState(() => localStorage.getItem("edited_code_" + order.id) === "true");
   const [isUpdating, setIsUpdating] = useState(false);
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
 
   const submitNewStaffCode = async () => {
     if (!newStaffCode.trim()) return;
@@ -811,6 +814,17 @@ function OrderStatusView({ order, restaurantName, googleMapReviewLink, businessT
           </div>
         )}
 
+        {order.status !== 'CANCELLED' && (
+          <div className="mt-4">
+            <button
+              onClick={() => setShowInvoiceModal(true)}
+              className="w-full flex items-center justify-center gap-2 rounded-2xl bg-neutral-900 text-white font-bold h-14 hover:bg-neutral-800 transition-all select-none shadow-sm drop-shadow-sm active:scale-95"
+            >
+              <Receipt className="h-4 w-4" /> View Bill / Invoice
+            </button>
+          </div>
+        )}
+
         {order.status === 'COMPLETED' && googleMapReviewLink && (
           <div className="mt-6">
             <a 
@@ -831,6 +845,14 @@ function OrderStatusView({ order, restaurantName, googleMapReviewLink, businessT
         </p>
       </motion.div>
     </div>
+
+    <InvoiceModal
+      isOpen={showInvoiceModal}
+      onClose={() => setShowInvoiceModal(false)}
+      order={order}
+      restaurantName={restaurantName}
+      businessType={businessType}
+    />
     </>
   );
 }

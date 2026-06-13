@@ -84,6 +84,7 @@ import { cn, formatCurrency, handleFirestoreError, OperationType } from '../lib/
 import { MenuItem, Order, Restaurant, OrderStatus, QrTable, StaffMember, StoreCustomer, StaffPermission } from '../types';
 import { BUSINESS_TYPES } from '../constants';
 import InvoiceModal from '../components/InvoiceModal';
+import SleekLoader from '../components/SleekLoader';
 
 const filterByBusinessType = <T extends { businessType?: string, category?: string }>(items: T[], currentType: string): T[] => {
   return items.filter(item => {
@@ -800,9 +801,7 @@ export default function OwnerDashboard() {
   };
 
   if (loading || !restaurant) return (
-    <div className="flex h-screen items-center justify-center">
-      <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-primary border-t-transparent" />
-    </div>
+    <SleekLoader message="Launching Merchant Workspace" />
   );
 
   const isFoodBiz = ['hotel', 'restaurant', 'fastfood', 'fast food', 'cafe'].includes(restaurant.businessType?.toLowerCase() || '');

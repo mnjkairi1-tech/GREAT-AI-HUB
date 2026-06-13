@@ -4,6 +4,7 @@ import { doc, getDoc, addDoc, collection, serverTimestamp } from 'firebase/fires
 import { auth, db } from '../lib/firebase';
 import { handleFirestoreError, OperationType } from '../lib/utils';
 import { onAuthStateChanged } from 'firebase/auth';
+import SleekLoader from '../components/SleekLoader';
 
 export default function JoinRestaurant() {
   const { restaurantId } = useParams();
@@ -54,7 +55,7 @@ export default function JoinRestaurant() {
     }
   };
 
-  if (loading) return <div>Loading...</div>;
+  if (loading) return <SleekLoader message="Retrieving invitation profile" />;
 
   return (
     <div className="flex h-screen items-center justify-center p-4">

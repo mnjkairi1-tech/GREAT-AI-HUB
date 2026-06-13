@@ -6,6 +6,7 @@ import { auth, db } from '../lib/firebase';
 import { motion } from 'motion/react';
 import { Mail, Lock, RefreshCcw, LogIn, Key, Check } from 'lucide-react';
 import { applyTheme } from '../themes';
+import SleekLoader from '../components/SleekLoader';
 
 export default function Home() {
   useEffect(() => {
@@ -177,9 +178,7 @@ export default function Home() {
   };
 
   if (loading) return (
-    <div className="flex h-screen items-center justify-center bg-[#f4faf8]">
-      <div className="h-10 w-10 animate-spin rounded-full border-4 border-[#0faf87] border-t-transparent" />
-    </div>
+    <SleekLoader message="Authenticating credentials" />
   );
 
   return (

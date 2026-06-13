@@ -34,6 +34,7 @@ import { cn, formatCurrency, handleFirestoreError, OperationType } from '../lib/
 import { MenuItem, Restaurant, OrderItem, Order } from '../types';
 import { applyTheme } from '../themes';
 import InvoiceModal from '../components/InvoiceModal';
+import SleekLoader from '../components/SleekLoader';
 
 export default function CustomerMenu() {
   const { restaurantId, tableNo } = useParams<{ restaurantId: string, tableNo: string }>();
@@ -299,9 +300,7 @@ export default function CustomerMenu() {
   };
 
   if (loading && !restaurant) return (
-    <div className="flex h-screen items-center justify-center bg-brand-bg">
-      <div className="h-10 w-10 animate-spin rounded-full border-4 border-brand-primary border-t-transparent" />
-    </div>
+    <SleekLoader message="Synchronizing with regional outlet" />
   );
 
   if (!restaurant) return <div>Restaurant not found</div>;

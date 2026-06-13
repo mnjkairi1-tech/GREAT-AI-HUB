@@ -16,20 +16,36 @@ export default function SleekLoader({
     <div className="flex flex-col items-center justify-center p-8 text-center select-none font-sans">
       
       {/* Sleek Floating Emoji */}
-      <motion.div 
-        animate={{ 
-          y: [-8, 8, -8],
-          rotate: [-2, 2, -2]
-        }}
-        transition={{ 
-          duration: 3, 
-          repeat: Infinity, 
-          ease: "easeInOut" 
-        }}
-        className="text-6xl mb-6 drop-shadow-md"
-      >
-        ✨
-      </motion.div>
+      <div className="relative mb-8 mt-4">
+        <motion.div 
+          animate={{ 
+            y: [-15, 0, -15],
+            rotate: [-2, 2, -2]
+          }}
+          transition={{ 
+            duration: 1.5, 
+            repeat: Infinity, 
+            ease: "easeInOut" 
+          }}
+          className="text-7xl relative z-10 drop-shadow-xl"
+        >
+          🍔
+        </motion.div>
+        
+        {/* Bouncing Shadow */}
+        <motion.div 
+          animate={{ 
+            scale: [0.6, 1, 0.6],
+            opacity: [0.2, 0.5, 0.2]
+          }}
+          transition={{ 
+            duration: 1.5, 
+            repeat: Infinity, 
+            ease: "easeInOut" 
+          }}
+          className="w-12 h-3 bg-neutral-300 rounded-full mx-auto mt-2 blur-[2px]"
+        />
+      </div>
 
       <motion.h2 
         initial={{ opacity: 0, y: 10 }}

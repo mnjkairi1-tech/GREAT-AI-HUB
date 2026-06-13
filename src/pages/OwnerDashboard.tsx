@@ -923,7 +923,7 @@ export default function OwnerDashboard() {
             icon={<Settings className="h-5 w-5" />}
             label="Settings"
             isLast
-            className=""
+            className={isFoodBiz ? "hidden md:flex" : ""}
           />
         </nav>
       </aside>
@@ -1203,17 +1203,25 @@ function HomeTab({ restaurant, setActiveTab, isStaff }: { restaurant: Restaurant
             ) : (
               <ul className="space-y-3">
                  {miniOrders.map(order => (
-                   <li key={order.id} className="flex justify-between items-center text-sm p-3 rounded-2xl bg-neutral-50">
-                      <span className="font-bold">{(businessType === 'Salon' || businessType === 'Clinic') ? 'Staff Code' : 'Table'} {order.tableNo} → {order.items.map(i => `${i.quantity}x ${i.name}`).join(', ')}</span>
+                   <li key={order.id} className="flex justify-between items-center p-3 rounded-2xl bg-neutral-50 border border-neutral-100/60 shadow-sm cursor-pointer hover:bg-neutral-100 transition-colors" onClick={() => setActiveTab('orders')}>
+                      <div className="flex flex-col gap-0.5 text-left">
+                        <span className="font-black text-neutral-800 text-sm">
+                          {(businessType === 'Salon' || businessType === 'Clinic') ? 'Staff Code: ' : 'Table '} 
+                          {order.tableNo}
+                        </span>
+                        <span className="text-xs font-bold text-neutral-500">
+                          {order.items.reduce((acc, item) => acc + item.quantity, 0)} Items • ₹{order.totalAmount?.toFixed(2)}
+                        </span>
+                      </div>
                       {!(businessType === 'Salon' || businessType === 'Clinic') && (
-                        <span className={cn("text-[10px] uppercase font-black tracking-widest px-2 py-1 rounded-full",
+                        <span className={cn("text-[10px] uppercase font-black tracking-widest px-2.5 py-1 rounded-full",
                            order.status === 'PENDING' ? 'bg-amber-100 text-amber-700' :
                            order.status === 'PREPARING' ? 'bg-orange-100 text-orange-700' :
                            'bg-blue-100 text-blue-700'
                         )}>
-                          {order.status === 'PENDING' && '⏳ Pending'}
-                          {order.status === 'PREPARING' && '⏳ Preparing'}
-                          {order.status === 'ACCEPTED' && '✅ Accepted'}
+                          {order.status === 'PENDING' && 'Pending'}
+                          {order.status === 'PREPARING' && 'Preparing'}
+                          {order.status === 'ACCEPTED' && 'Accepted'}
                         </span>
                       )}
                    </li>
@@ -1570,6 +1578,62 @@ function MenuTab({ restaurantId, businessType }: { restaurantId: string, busines
   const [searchTerm, setSearchTerm] = useState('');
   const navigate = useNavigate();
 
+  // AI Quick Add states
+  const [isAiQuickAddOpen, setIsAiQuickAddOpen] = useState(false);
+  const [aiItemName, setAiItemName] = useState('');
+  const [aiItemPrice, setAiItemPrice] = useState('');
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiError, setAiError] = useState('');
+
+  const handleAiGenerate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!aiItemName.trim()) return;
+    setAiGenerating(true);
+    setAiError('');
+    try {
+      const response = await fetch('/api/gemini/generate-menu-item', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          itemName: aiItemName,
+          price: aiItemPrice || null,
+          businessType: businessType
+        })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || 'AI autofill failed');
+      }
+
+      const data = await response.json();
+      
+      // Auto populate the manual editing form with the smart AI details
+      setForm({
+        name: data.name || aiItemName,
+        price: (data.price || aiItemPrice || '199').toString(),
+        category: data.category || defaultCat,
+        description: data.description || '',
+        imageUrl: data.imageUrl || '',
+        stockCount: '0',
+        volume: data.volume || ''
+      });
+
+      // Show manual form so user can inspect, fine tune, or save
+      setIsFormOpen(true);
+      setIsAiQuickAddOpen(false);
+      setAiItemName('');
+      setAiItemPrice('');
+    } catch (err: any) {
+      console.error(err);
+      setAiError(err.message || 'AI failed to generate details. Please fill manually.');
+    } finally {
+      setAiGenerating(false);
+    }
+  };
+
   useEffect(() => {
     const qPath = 'menuItems';
     const q = query(collection(db, qPath), where('restaurantId', '==', restaurantId));
@@ -1671,11 +1735,19 @@ function MenuTab({ restaurantId, businessType }: { restaurantId: string, busines
     <div className="space-y-6">
       <div className="flex items-center gap-3 overflow-x-auto pb-4 mb-4 scrollbar-hide">
         <button 
-          onClick={() => { resetForm(); setIsFormOpen(true); }}
+          onClick={() => { resetForm(); setIsFormOpen(true); setIsAiQuickAddOpen(false); }}
           className="flex items-center gap-2 whitespace-nowrap rounded-full bg-neutral-900 px-5 py-2.5 text-sm font-bold text-white transition-all hover:bg-neutral-800 active:scale-95 shadow-sm"
         >
           <Plus className="-ml-1 h-4 w-4" />
           Add Item
+        </button>
+
+        <button 
+          onClick={() => { setIsAiQuickAddOpen(!isAiQuickAddOpen); setIsFormOpen(false); }}
+          className="flex items-center gap-2 whitespace-nowrap rounded-full bg-gradient-to-r from-orange-500 to-amber-600 px-5 py-2.5 text-sm font-bold text-white transition-all hover:opacity-95 active:scale-95 shadow-md border-0"
+        >
+          <Sparkles className="-ml-1 h-4 w-4 text-amber-100 animate-pulse" />
+          AI Fast Add
         </button>
 
         <button 
@@ -1723,13 +1795,101 @@ function MenuTab({ restaurantId, businessType }: { restaurantId: string, busines
       </div>
 
       <AnimatePresence>
+        {isAiQuickAddOpen && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden rounded-3xl border border-orange-100 bg-gradient-to-b from-orange-50/40 to-amber-50/10 p-6 shadow-sm mb-6"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="flex items-center gap-2 font-bold text-neutral-800 text-base">
+                <Sparkles className="h-5 w-5 text-orange-500" />
+                AI Smart Quick Add
+              </h4>
+              <button 
+                type="button"
+                onClick={() => setIsAiQuickAddOpen(false)}
+                className="rounded-full p-1.5 hover:bg-neutral-100 text-neutral-400 hover:text-neutral-600"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            
+            <p className="text-xs text-neutral-500 mb-5 max-w-2xl leading-relaxed font-medium">
+              Just write the product or service name along with an optional price. Gemini will immediately format it, write a rich premium description, assign the best category, and auto-apply an exquisite matching stock photo!
+            </p>
+
+            <form onSubmit={handleAiGenerate} className="grid grid-cols-1 gap-4 md:grid-cols-3 items-end">
+              <div>
+                <label className="block text-xs font-bold text-neutral-400 mb-1.5 uppercase tracking-wider">Item / Service Name</label>
+                <input 
+                  required
+                  type="text"
+                  placeholder={businessType === 'Salon' ? "e.g., Hydra Facial Care" : businessType === 'Clinic' ? "e.g., Pediatric Consultation" : "e.g., Paneer Butter Masala"}
+                  value={aiItemName}
+                  onChange={(e) => setAiItemName(e.target.value)}
+                  className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm font-semibold outline-none focus:border-orange-500 transition-colors"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-neutral-400 mb-1.5 uppercase tracking-wider">Price (Optional, ₹)</label>
+                <input 
+                  type="number"
+                  placeholder="Recommend best rate"
+                  value={aiItemPrice}
+                  onChange={(e) => setAiItemPrice(e.target.value)}
+                  className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm font-semibold outline-none focus:border-orange-500 transition-colors"
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  disabled={aiGenerating}
+                  className="flex-1 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 h-11 px-6 font-bold text-white shadow-md transition-all text-sm flex items-center justify-center gap-2 disabled:opacity-75"
+                >
+                  {aiGenerating ? (
+                    <>
+                      <RefreshCcw className="h-4 w-4 animate-spin text-white" />
+                      Generating with AI...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4 text-white" />
+                      Generate Info
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsAiQuickAddOpen(false)}
+                  className="rounded-2xl bg-neutral-100 hover:bg-neutral-200 text-neutral-600 h-11 px-4 font-bold text-sm"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+
+            {aiError && (
+              <p className="mt-3 text-xs font-bold text-red-500 flex items-center gap-1.5">
+                <AlertTriangle className="h-4 w-4 text-red-500" />
+                {aiError}
+              </p>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
         {isFormOpen && (
           <motion.form 
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            onSubmit={handleSubmit}
             className="grid grid-cols-1 gap-4 overflow-hidden rounded-2xl border border-neutral-200 bg-white p-6 md:grid-cols-4"
+            onSubmit={handleSubmit}
           >
             <div className="md:col-span-2">
               <label className="text-xs font-bold text-neutral-400">NAME</label>

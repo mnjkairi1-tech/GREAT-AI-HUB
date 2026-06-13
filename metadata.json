@@ -2,5 +2,5 @@
   "name": "QR Smart Menu",
   "description": "A QR-based restaurant ordering system with real-time order tracking for customers and owners.",
   "requestFramePermissions": [],
-  "majorCapabilities": []
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

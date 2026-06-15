@@ -131,6 +131,8 @@ export default function CeoDashboard() {
         name: aiItemName.trim(),
         price: isNaN(parseFloat(aiItemPrice)) ? 0 : parseFloat(aiItemPrice),
         category: 'Admin Added',
+        isAvailable: true,
+        stockCount: 100,
         createdAt: serverTimestamp()
       });
       
@@ -179,6 +181,8 @@ export default function CeoDashboard() {
            name: item.name || 'Unknown Item',
            price: parseFloat(item.price) || 0,
            category: item.category || 'AI Generated',
+           isAvailable: true,
+           stockCount: 100,
            createdAt: serverTimestamp()
         })
       ));

@@ -127,7 +127,7 @@ export default function CustomerMenu() {
     fetchData();
 
     const qPath = 'menuItems';
-    const q = query(collection(db, qPath), where('restaurantId', '==', restaurantId), where('isAvailable', '==', true));
+    const q = query(collection(db, qPath), where('restaurantId', '==', restaurantId));
     const unsub = onSnapshot(q, (mSnapshot) => {
       const items = mSnapshot.docs.map(iDoc => ({ id: iDoc.id, ...iDoc.data() } as MenuItem));
       setMenuItems(items);
@@ -181,6 +181,8 @@ export default function CustomerMenu() {
 
   const availableMenuItems = useMemo(() => {
     return menuItems.filter(i => {
+      // If manually disabled / hidden by owner, hide it
+      if (i.isAvailable === false) return false;
       if (i.category === 'Inventory Product') return false;
       
       const isMismatch = i.businessType && restaurant?.businessType && i.businessType !== restaurant.businessType;
@@ -203,7 +205,7 @@ export default function CustomerMenu() {
       if (isServiceOrFood) {
         return true;
       }
-      return i.stockCount > 0;
+      return i.stockCount === undefined || i.stockCount === null || i.stockCount > 0;
     });
   }, [menuItems, restaurant?.businessType]);
 
@@ -214,7 +216,7 @@ export default function CustomerMenu() {
 
   const filteredItems = availableMenuItems.filter(i => 
     (activeCategory === 'All' || i.category === activeCategory) &&
-    (i.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    ((i.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
     (i.description && i.description.toLowerCase().includes(searchTerm.toLowerCase())))
   );
 

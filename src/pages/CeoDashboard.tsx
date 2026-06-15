@@ -3,7 +3,7 @@ import { db, auth } from '../lib/firebase';
 import { collection, getDocs, updateDoc, doc, addDoc, serverTimestamp, query, where } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { useNavigate } from 'react-router-dom';
-import { Shield, Users, LogOut, DollarSign, Activity, AlertCircle, Home, BarChart2, Settings, Power, Edit2, CheckCircle2, Palette, History, Wrench, MessageSquare, Send, X, PlusCircle, Sparkles, Search, Megaphone, ArrowLeft, Check, HelpCircle } from 'lucide-react';
+import { Shield, Users, LogOut, DollarSign, Activity, AlertCircle, Home, BarChart2, Settings, Power, Edit2, CheckCircle2, Palette, History, Wrench, MessageSquare, Send, X, PlusCircle, Sparkles, Search, Megaphone, ArrowLeft, Check, HelpCircle, Bell, AlertTriangle, CreditCard, ChevronRight, Layers } from 'lucide-react';
 import { startOfMonth, endOfMonth, isWithinInterval, startOfYear, endOfYear, format } from 'date-fns';
 import { Restaurant } from '../types';
 import SleekLoader from '../components/SleekLoader';
@@ -41,6 +41,25 @@ const THEMES = [
   }
 ];
 
+
+const parseFirebaseDate = (createdAt: any): Date => {
+  if (!createdAt) return new Date(0);
+  if (typeof createdAt.toDate === 'function') {
+    return createdAt.toDate();
+  }
+  if (createdAt instanceof Date) {
+    return createdAt;
+  }
+  if (typeof createdAt === 'object' && createdAt.seconds !== undefined) {
+    return new Date(createdAt.seconds * 1000);
+  }
+  if (typeof createdAt === 'string' || typeof createdAt === 'number') {
+    const d = new Date(createdAt);
+    return isNaN(d.getTime()) ? new Date(0) : d;
+  }
+  return new Date(0);
+};
+
 export default function CeoDashboard() {
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [payments, setPayments] = useState<PlatformPayment[]>([]);
@@ -54,6 +73,26 @@ export default function CeoDashboard() {
   const [clientTab, setClientTab] = useState<'basic' | 'standard' | 'pro'>('standard');
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
   const [clientStats, setClientStats] = useState<Record<string, { monthlyEarning: number, isLoading: boolean }>>({});
+
+  // Beautiful Custom Non-Blocking Confirms & Alerts for iFrames
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    actionText: string;
+    onConfirm: () => void | Promise<void>;
+    colorTheme?: 'danger' | 'primary' | 'success';
+  } | null>(null);
+
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => {
+      setToast(prev => prev && prev.message === message ? null : prev);
+    }, 4000);
+  };
+
 
   // Tools Tab State
   const [selectedToolsClient, setSelectedToolsClient] = useState<string>('');
@@ -70,6 +109,108 @@ export default function CeoDashboard() {
   const [aiItemPrompt, setAiItemPrompt] = useState('');
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiError, setAiError] = useState('');
+
+  // Premium Client Configuration States
+  const [homeSearchQuery, setHomeSearchQuery] = useState<string>('');
+  const [homeCategoryFilter, setHomeCategoryFilter] = useState<string>('All');
+  const [customBusinessType, setCustomBusinessType] = useState<string>('Restaurant');
+  const [customClientTheme, setCustomClientTheme] = useState<string>('classic-orange');
+  const [customStaffCodeEnabled, setCustomStaffCodeEnabled] = useState<boolean>(false);
+  const [updatingOverrides, setUpdatingOverrides] = useState<boolean>(false);
+
+  const handleSaveClientOverrides = async () => {
+    if (!selectedToolsClient) return;
+    setUpdatingOverrides(true);
+    try {
+      await updateDoc(doc(db, 'restaurants', selectedToolsClient), {
+        businessType: customBusinessType,
+        theme: customClientTheme,
+        enableStaffCode: customStaffCodeEnabled
+      });
+      setRestaurants(prev => prev.map(r => r.id === selectedToolsClient ? {
+        ...r,
+        businessType: customBusinessType,
+        theme: customClientTheme as any,
+        enableStaffCode: customStaffCodeEnabled
+      } : r));
+      showToast('Client configurations updated successfully! Changes are applied instantly.', 'success');
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to update configurations', 'error');
+    }
+    setUpdatingOverrides(false);
+  };
+
+  const handleInjectTemplate = async (presetType: string) => {
+    if (!selectedToolsClient) return;
+    
+    let itemsToInject: Array<{ name: string; price: number; category: string }> = [];
+    
+    if (presetType === 'Food & Cafe / Restaurant') {
+      itemsToInject = [
+        { name: 'Double Cheese Margherita Pizza', price: 249, category: 'Pizza' },
+        { name: 'Crispy Veg Spicy Burger', price: 119, category: 'Burgers' },
+        { name: 'Iced Irish Brew Mocha', price: 180, category: 'Beverages' },
+        { name: 'Fresh Alfonso Mango Smoothie', price: 160, category: 'Beverages' },
+        { name: 'Stuffed Garlic Breadsticks', price: 139, category: 'Appetizers' }
+      ];
+    } else if (presetType === 'Beauty Salon & Spa') {
+      itemsToInject = [
+        { name: 'Global Hair Color & Spa Treatment', price: 2499, category: 'Hair Services' },
+        { name: 'Detoxifying Facial & Face Massage', price: 999, category: 'Skin Care' },
+        { name: 'Classic Hair Styling & Trim', price: 349, category: 'Hair Services' },
+        { name: 'Premium Pedicure & Feet Therapy', price: 799, category: 'Nail & Feet' },
+        { name: 'Detoxifying Head Hot Oil Massage (30 mins)', price: 490, category: 'Body Therapy' }
+      ];
+    } else if (presetType === 'Medical Clinic / Dentist') {
+      itemsToInject = [
+        { name: 'General Physician Consultation', price: 500, category: 'Consultation' },
+        { name: 'Complete Ultrasonic Dental Scaling', price: 1200, category: 'Dental Care' },
+        { name: 'Pediatric Child Health Screening', price: 800, category: 'Specialist' },
+        { name: 'Digital Teeth X-Ray & Report', price: 400, category: 'Lab Diagnostics' },
+        { name: 'Suture dress & sterile bandaging', price: 299, category: 'Procedures' }
+      ];
+    } else if (presetType === 'General Retail & Essentials') {
+      itemsToInject = [
+        { name: 'Natural Aloe Vera Skin Gel (150g)', price: 180, category: 'Cosmetics' },
+        { name: 'Cold Pressed Coconut Massage Oil (250ml)', price: 299, category: 'Essentials' },
+        { name: 'Premium Multi-Vitamin Gummies (30 count)', price: 450, category: 'Wellness' },
+        { name: 'Hydrating Botanical Body Wash', price: 340, category: 'Personal Care' },
+        { name: 'Organic Herbal Detox Tea Kit', price: 220, category: 'Groceries' }
+      ];
+    }
+
+    if (itemsToInject.length === 0) return;
+
+    setConfirmModal({
+      isOpen: true,
+      title: "Inject Starter Catalog Blueprint",
+      message: `Would you like to instantly auto-populate 5 premium starter items for "${presetType}" to kickstart the system search catalog?`,
+      actionText: "Inject Now",
+      colorTheme: "success",
+      onConfirm: async () => {
+        try {
+          await Promise.all(itemsToInject.map(item => 
+            addDoc(collection(db, 'menuItems'), {
+              restaurantId: selectedToolsClient,
+              businessType: customBusinessType,
+              name: item.name,
+              price: item.price,
+              category: item.category,
+              isAvailable: true,
+              stockCount: 100,
+              createdAt: serverTimestamp()
+            })
+          ));
+          showToast('Blueprint template injected successfully!', 'success');
+        } catch (err) {
+          console.error(err);
+          showToast('Failed to inject template', 'error');
+        }
+        setConfirmModal(null);
+      }
+    });
+  };
 
   const loadClientStats = async (restId: string) => {
     if (clientStats[restId]) return;
@@ -110,11 +251,11 @@ export default function CeoDashboard() {
       await updateDoc(doc(db, 'restaurants', selectedToolsClient), {
         adminMessage: adminMessageBody.trim()
       });
-      alert('Message sent to client!');
+      showToast('Message sent to client!', 'success');
       setAdminMessageBody('');
     } catch (e) {
       console.error(e);
-      alert('Failed to send message');
+      showToast('Failed to send message', 'error');
     }
     setSendingMessage(false);
   };
@@ -136,12 +277,12 @@ export default function CeoDashboard() {
         createdAt: serverTimestamp()
       });
       
-      alert('Item added successfully to client catalog!');
+      showToast('Item added successfully to client catalog!', 'success');
       setAiItemName('');
       setAiItemPrice('');
     } catch (err) {
       console.error(err);
-      alert('Failed to add item');
+      showToast('Failed to add item', 'error');
     }
   };
 
@@ -187,7 +328,7 @@ export default function CeoDashboard() {
         })
       ));
 
-      alert('AI items added to client catalog!');
+       showToast('AI items added to client catalog!', 'success');
       setAiItemPrompt('');
     } catch (e: any) {
       console.error(e);
@@ -199,10 +340,7 @@ export default function CeoDashboard() {
   const getLatestPaymentDate = (restId: string) => {
     const restPayments = payments.filter(p => p.restaurantId === restId);
     if (restPayments.length === 0) return 0;
-    return Math.max(...restPayments.map(p => {
-      if (!p.createdAt) return 0;
-      return p.createdAt.seconds ? p.createdAt.seconds * 1000 : new Date(p.createdAt).getTime();
-    }));
+    return Math.max(...restPayments.map(p => parseFirebaseDate(p.createdAt).getTime()));
   };
 
   // Theme support
@@ -246,52 +384,74 @@ export default function CeoDashboard() {
 
   const handleLogout = () => signOut(auth).then(() => navigate('/'));
 
-  const toggleRestaurantBlock = async (id: string, currentlyBlocked: boolean) => {
-    const confirmMsg = currentlyBlocked ? "Unblock this business?" : "Block this business? They and their staff won't be able to use the app.";
-    if (!window.confirm(confirmMsg)) return;
-
-    try {
-       await updateDoc(doc(db, 'restaurants', id), { isBlocked: !currentlyBlocked });
-       setRestaurants(prev => prev.map(r => r.id === id ? { ...r, isBlocked: !currentlyBlocked } : r));
-    } catch (err) {
-       console.error("Failed to update status", err);
-       alert("Failed to update status");
-    }
+   const toggleRestaurantBlock = (id: string, currentlyBlocked: boolean) => {
+    const confirmMsg = currentlyBlocked 
+      ? "They and their staff will regain immediate full access to the application." 
+      : "They and their staff won't be able to use the app or access any features until unblocked.";
+    
+    setConfirmModal({
+      isOpen: true,
+      title: currentlyBlocked ? "Unblock this business?" : "Block this business?",
+      message: confirmMsg,
+      actionText: currentlyBlocked ? "Unblock Now" : "Block Business",
+      colorTheme: currentlyBlocked ? "success" : "danger",
+      onConfirm: async () => {
+        try {
+           await updateDoc(doc(db, 'restaurants', id), { isBlocked: !currentlyBlocked });
+           setRestaurants(prev => prev.map(r => r.id === id ? { ...r, isBlocked: !currentlyBlocked } : r));
+           showToast(`Business is now ${currentlyBlocked ? 'Active' : 'Blocked'} successfully!`, 'success');
+        } catch (err) {
+           console.error("Failed to update status", err);
+           showToast("Failed to update status", 'error');
+        }
+        setConfirmModal(null);
+      }
+    });
   };
 
   const saveFee = async (id: string) => {
     const num = Number(tempFee);
     if (isNaN(num) || num < 0) {
-      alert("Invalid fee amount");
+      showToast("Invalid fee amount", 'error');
       return;
     }
     try {
       await updateDoc(doc(db, 'restaurants', id), { subscriptionFee: num });
       setRestaurants(prev => prev.map(r => r.id === id ? { ...r, subscriptionFee: num } : r));
       setEditingFeeId(null);
+      showToast("Subscription fee saved successfully!", 'success');
     } catch (err) {
       console.error(err);
-      alert("Failed to save fee");
+      showToast("Failed to save fee", 'error');
     }
   };
 
-  const markPaid = async (rest: Restaurant) => {
+  const markPaid = (rest: Restaurant) => {
     const fee = rest.subscriptionFee || 1000;
-    if (!window.confirm(`Mark ₹${fee} as paid for this month for ${rest.name}?`)) return;
-
-    try {
-      const newPay = {
-        restaurantId: rest.id,
-        amount: fee,
-        createdAt: serverTimestamp()
-      };
-      const docRef = await addDoc(collection(db, 'platformPayments'), newPay);
-      setPayments(prev => [...prev, { id: docRef.id, ...newPay, createdAt: { toDate: () => new Date() } }]);
-      alert("Payment recorded!");
-    } catch (err) {
-      console.error("Payment recording failed", err);
-      alert("Failed to record payment");
-    }
+    
+    setConfirmModal({
+      isOpen: true,
+      title: "Record Subscription Payment",
+      message: `Confirm that you've received ₹${fee} subscription fee for the current billing cycle from ${rest.name}?`,
+      actionText: "Record Paid",
+      colorTheme: "success",
+      onConfirm: async () => {
+        try {
+          const newPay = {
+            restaurantId: rest.id,
+            amount: fee,
+            createdAt: serverTimestamp()
+          };
+          const docRef = await addDoc(collection(db, 'platformPayments'), newPay);
+          setPayments(prev => [...prev, { id: docRef.id, ...newPay, createdAt: { toDate: () => new Date() } }]);
+          showToast(`Recorded payment of ₹${fee} for ${rest.name}!`, 'success');
+        } catch (err) {
+          console.error("Payment recording failed", err);
+          showToast("Failed to record payment", 'error');
+        }
+        setConfirmModal(null);
+      }
+    });
   };
 
   const { totalEarnings, monthlyEarnings, yearlyEarnings, chartData } = useMemo(() => {
@@ -308,7 +468,7 @@ export default function CeoDashboard() {
     const monthlyAgg: Record<string, number> = {};
 
     payments.forEach(p => {
-      const payDate = p.createdAt?.toDate ? p.createdAt.toDate() : new Date();
+      const payDate = parseFirebaseDate(p.createdAt);
       const amount = Number(p.amount) || 0;
       
       total += amount;
@@ -337,6 +497,16 @@ export default function CeoDashboard() {
     };
   }, [payments]);
 
+  // Count active business categories
+  const businessTypeCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    restaurants.forEach(r => {
+      const bType = r.businessType || 'General Store';
+      counts[bType] = (counts[bType] || 0) + 1;
+    });
+    return counts;
+  }, [restaurants]);
+
   // Check if a restaurant has paid this month
   const hasPaidThisMonth = (restId: string) => {
     const now = new Date();
@@ -344,7 +514,7 @@ export default function CeoDashboard() {
     const mEnd = endOfMonth(now);
     return payments.some(p => {
       if (p.restaurantId !== restId) return false;
-      const d = p.createdAt?.toDate ? p.createdAt.toDate() : new Date();
+      const d = parseFirebaseDate(p.createdAt);
       return isWithinInterval(d, { start: mStart, end: mEnd });
     });
   };
@@ -355,36 +525,354 @@ export default function CeoDashboard() {
     switch (activeTab) {
       case 'home': {
         const paidThisMonthCount = restaurants.filter(r => hasPaidThisMonth(r.id)).length;
+        const unpaidRests = restaurants.filter(r => !hasPaidThisMonth(r.id));
         
-        return (
-          <div className="space-y-4 p-4 pb-24">
-            <h2 className={`text-xl font-black mb-6 ${t.text}`}>Overview</h2>
+        // Filter partners list by lookup string and optional category filter on home page
+        const homeFilteredRests = restaurants.filter(r => {
+          const matchQuery = (r.name || '').toLowerCase().includes(homeSearchQuery.toLowerCase()) || 
+                             (r.ownerEmail || '').toLowerCase().includes(homeSearchQuery.toLowerCase());
+          
+          if (homeCategoryFilter === 'All') return matchQuery;
+          
+          const restaurantType = (r.businessType || 'Restaurant').toLowerCase();
+          const activeFilter = homeCategoryFilter.toLowerCase();
+          
+          if (activeFilter === 'restaurant') {
+            return matchQuery && (restaurantType === 'restaurant' || restaurantType === 'fast food' || restaurantType === 'cafe');
+          }
+          if (activeFilter === 'salon') {
+            return matchQuery && restaurantType === 'salon';
+          }
+          if (activeFilter === 'clinic') {
+            return matchQuery && restaurantType === 'clinic';
+          }
+          if (activeFilter === 'store') {
+            return matchQuery && (restaurantType === 'general store' || restaurantType === 'store' || restaurantType === 'gym');
+          }
+          
+          return matchQuery;
+        });
 
+        const sendPaymentDuesReminder = async (r: Restaurant) => {
+          try {
+            const fee = r.subscriptionFee || 1000;
+            const textAlert = `Kindly review your pending monthly digital subscription premium fee of ₹${fee}. Contact support to secure un-interrupted services.`;
+            await updateDoc(doc(db, 'restaurants', r.id), { adminMessage: textAlert });
+            setRestaurants(prev => prev.map(item => item.id === r.id ? { ...item, adminMessage: textAlert } : item));
+            showToast(`Payment reminder bulletin posted successfully to ${r.name}'s home screen!`, 'success');
+          } catch (e) {
+            console.error(e);
+            showToast("Failed to send dues reminder bulletin", 'error');
+          }
+        };
+
+        const quickClearBulletinMessage = async (r: Restaurant) => {
+          try {
+            await updateDoc(doc(db, 'restaurants', r.id), { adminMessage: '' });
+            setRestaurants(prev => prev.map(item => item.id === r.id ? { ...item, adminMessage: '' } : item));
+            showToast(`Bulletin announcement cleared for ${r.name}!`, 'success');
+          } catch (e) {
+            console.error(e);
+            showToast("Failed to clear bulletin message", 'error');
+          }
+        };
+
+        return (
+          <div className="space-y-6 p-4 pb-24">
+            {/* Header branding block */}
+            <div className="flex items-center justify-between">
+              <div className="text-left">
+                <span className={`text-[9px] font-black uppercase tracking-widest ${t.primary} bg-orange-500/10 px-2.5 py-1 rounded-full ${t.primaryLight}`}>
+                  Elite Admin Center
+                </span>
+                <h2 className={`text-xl font-black mt-2 ${t.text}`}>Platform Overview</h2>
+              </div>
+              <div className="relative">
+                <span className="flex h-3 w-3 absolute -right-0.5 -top-0.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-orange-500"></span>
+                </span>
+                <div className={`p-2.5 rounded-2xl bg-black/5 dark:bg-white/5 border ${t.border}`}>
+                  <Bell className={`h-4.5 w-4.5 ${t.text}`} />
+                </div>
+              </div>
+            </div>
+
+            {/* Financial Performance Grid */}
             <div className="grid grid-cols-2 gap-4">
-              <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm`}>
-                <p className={`text-[10px] font-bold tracking-wider uppercase mb-2 ${t.textMuted}`}>Platform Revenue</p>
+              <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm text-left relative overflow-hidden group`}>
+                <div className="absolute right-0 bottom-0 translate-y-2 translate-x-2 text-neutral-100 dark:text-neutral-800 opacity-20 pointer-events-none transition-transform group-hover:scale-110">
+                  <DollarSign className="w-24 h-24 stroke-[1.5]" />
+                </div>
+                <p className={`text-[10px] font-bold tracking-wider uppercase mb-1.5 ${t.textMuted}`}>Platform Revenue</p>
                 <h3 className={`text-2xl font-black ${t.text}`}>₹{totalEarnings.toLocaleString()}</h3>
-                <p className={`text-[10px] font-medium mt-1 ${t.textMuted}`}>All-time collected</p>
+                <p className={`text-[9.5px] font-medium mt-1 ${t.textMuted}`}>All-time accumulated subscription receipts</p>
               </div>
 
-              <div className={`${t.primaryLight} rounded-3xl p-5 border ${t.primaryBorder} shadow-sm`}>
-                <p className={`text-[10px] font-bold tracking-wider uppercase mb-2 ${t.primary}`}>Monthly Revenue</p>
+              <div className={`${t.primaryLight} rounded-3xl p-5 border ${t.primaryBorder} shadow-sm text-left relative overflow-hidden group`}>
+                <div className="absolute right-0 bottom-0 translate-y-2 translate-x-2 text-orange-500/10 pointer-events-none transition-transform group-hover:scale-110">
+                  <Activity className="w-24 h-24 stroke-[1.5]" />
+                </div>
+                <p className={`text-[10px] font-bold tracking-wider uppercase mb-1.5 ${t.primary}`}>Monthly Inflow</p>
                 <h3 className={`text-2xl font-black ${t.primary}`}>₹{monthlyEarnings.toLocaleString()}</h3>
-                <p className={`text-[10px] font-medium mt-1 ${t.primary} opacity-80`}>This month</p>
+                <p className={`text-[9.5px] font-medium mt-1 ${t.primary} opacity-80`}>Collected during this billing cycle</p>
               </div>
             </div>
             
+            {/* User Counters */}
             <div className="grid grid-cols-2 gap-4">
-              <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm`}>
-                <Users className={`h-6 w-6 mb-3 ${t.primary}`} />
+              <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm text-left`}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className={`text-[10px] font-black uppercase tracking-wider ${t.textMuted}`}>Active Accounts</span>
+                  <Users className={`h-5 w-5 ${t.primary}`} />
+                </div>
                 <h4 className={`text-2xl font-black ${t.text}`}>{restaurants.length}</h4>
-                <p className={`text-xs font-semibold uppercase tracking-widest mt-1 ${t.textMuted}`}>Active Users</p>
+                <p className={`text-[9.5px] font-semibold mt-1 text-emerald-500`}>● Live partners connected</p>
               </div>
-              <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm`}>
-                <CheckCircle2 className={`h-6 w-6 mb-3 ${t.primary}`} />
+              <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm text-left`}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className={`text-[10px] font-black uppercase tracking-wider ${t.textMuted}`}>Billing Ratio</span>
+                  <CheckCircle2 className={`h-5 w-5 ${t.primary}`} />
+                </div>
                 <h4 className={`text-2xl font-black ${t.text}`}>{paidThisMonthCount} <span className={`text-sm ${t.textMuted}`}>/ {restaurants.length}</span></h4>
-                <p className={`text-[10px] font-semibold uppercase tracking-widest mt-1 ${t.textMuted}`}>Paid This Month</p>
+                <p className={`text-[9.5px] font-semibold mt-1 ${t.textMuted}`}>
+                  {Math.round((paidThisMonthCount / (restaurants.length || 1)) * 100)}% cycle achievement
+                </p>
               </div>
+            </div>
+
+            {/* Quick Action Payment Reminders (Action Dues Card) */}
+            {unpaidRests.length > 0 ? (
+              <div className="border border-amber-200/60 dark:border-amber-900/40 bg-amber-500/5 rounded-3xl p-5 text-left space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="h-5 w-5 text-amber-500" />
+                    <div>
+                      <h3 className={`text-sm font-black ${t.text}`}>Pending Billing Action ({unpaidRests.length})</h3>
+                      <p className="text-[10px] text-amber-600/90 font-medium">Partners who have not completed payment this month</p>
+                    </div>
+                  </div>
+                  <span className="text-[9px] font-bold uppercase py-0.5 px-2 bg-amber-500/10 text-amber-600 rounded">
+                    Action required
+                  </span>
+                </div>
+
+                <div className="space-y-2 max-h-[190px] overflow-y-auto pr-1">
+                  {unpaidRests.map(r => (
+                    <div key={r.id} className={`${t.card} rounded-2xl p-3 border ${t.border} flex items-center justify-between gap-2`}>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <p className={`text-xs font-black truncate ${t.text}`}>{r.name}</p>
+                          <span className="text-[8px] font-extrabold uppercase bg-neutral-100 dark:bg-neutral-800 text-neutral-500 px-1.5 py-0.5 rounded">
+                            {r.businessType || 'Store'}
+                          </span>
+                        </div>
+                        <p className={`text-[10px] ${t.textMuted} font-semibold`}>Rate: ₹{r.subscriptionFee || 1000}/mo</p>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 flex-none">
+                        <button
+                          title="Broadcast a warning banner on their dashboard screen instantly"
+                          onClick={() => sendPaymentDuesReminder(r)}
+                          className="px-2.5 py-1.5 rounded-xl border border-orange-500/20 text-orange-500 hover:bg-orange-500/10 font-black text-[9px] uppercase tracking-wider transition-all"
+                        >
+                          Alert Banner
+                        </button>
+                        <button
+                          onClick={() => markPaid(r)}
+                          className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-black text-[9px] uppercase tracking-wider transition-all flex items-center gap-1"
+                        >
+                          Mark Paid
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="border border-emerald-500/15 bg-emerald-500/5 rounded-3xl p-5 text-left flex items-center gap-3">
+                <Check className="w-8 h-8 text-emerald-500 bg-emerald-500/10 p-1.5 rounded-2xl" />
+                <div>
+                  <h4 className={`text-xs font-black ${t.text}`}>Perfect Financial Health</h4>
+                  <p className={`text-[10px] ${t.textMuted}`}>All registered business accounts are fully paid for the current month.</p>
+                </div>
+              </div>
+            )}
+
+            {/* Premium Live Client Search & Quick Operations Grid */}
+            <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm text-left space-y-4`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Search className={`h-5 w-5 ${t.primary}`} />
+                  <h3 className={`text-sm font-black uppercase tracking-wider ${t.text}`}>Smart Partner Station</h3>
+                </div>
+                <span className="text-[10px] font-semibold text-neutral-400">
+                  Adapts by category
+                </span>
+              </div>
+
+              <p className={`text-[11px] ${t.textMuted} leading-relaxed`}>
+                Search and select any partner system instantly to trigger the <strong>Gemini AI Automatic Menu Generator</strong>, system theme changes, or live dispatch alerts.
+              </p>
+
+              {/* Categoric Switchers */}
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { id: 'All', label: 'All Businesses' },
+                  { id: 'Restaurant', label: 'Cafes / Food' },
+                  { id: 'Salon', label: 'Beauty Salons' },
+                  { id: 'Clinic', label: 'Medical Clinics' },
+                  { id: 'Store', label: 'Stores / Retail' }
+                ].map(cat => (
+                  <button
+                    key={cat.id}
+                    onClick={() => setHomeCategoryFilter(cat.id)}
+                    className={`px-3 py-1.5 rounded-xl text-[10.5px] font-bold border transition-all ${
+                      homeCategoryFilter === cat.id
+                        ? `${t.primaryBorder} ${t.primaryLight} ${t.primary}`
+                        : `border-transparent bg-black/5 dark:bg-white/5 ${t.textMuted} hover:text-orange-500`
+                    }`}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Custom Home Search Bar */}
+              <div className="relative">
+                <Search className={`absolute left-3.5 top-3.5 h-3.5 w-3.5 ${t.textMuted}`} />
+                <input 
+                  type="text" 
+                  placeholder={`Search in ${homeCategoryFilter === 'All' ? 'all' : homeCategoryFilter}...`} 
+                  value={homeSearchQuery}
+                  onChange={(e) => setHomeSearchQuery(e.target.value)}
+                  className={`w-full rounded-2xl border ${t.border} ${t.bg} pl-9 pr-9 py-2.5 outline-none ${t.text} text-xs font-semibold transition-all focus:ring-1 focus:ring-orange-500`}
+                />
+                {homeSearchQuery && (
+                  <button 
+                    onClick={() => setHomeSearchQuery('')}
+                    className="absolute right-3 top-2.5 p-1 rounded-full hover:bg-black/5 dark:hover:bg-white/5"
+                  >
+                    <X className={`w-3.5 h-3.5 ${t.textMuted}`} />
+                  </button>
+                )}
+              </div>
+
+              {/* Matching list of restaurants */}
+              <div className="space-y-2.5 max-h-[300px] overflow-y-auto pr-1">
+                {homeFilteredRests.slice(0, 10).map(r => {
+                  const bType = r.businessType || 'Restaurant';
+                  const isPaid = hasPaidThisMonth(r.id);
+                  const hasActiveBulletin = !!r.adminMessage;
+
+                  return (
+                    <div 
+                      key={r.id} 
+                      className={`p-4 rounded-2xl border ${t.border} bg-neutral-50/50 dark:bg-neutral-900/30 hover:border-orange-500/30 transition-all space-y-3.5 text-left`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <h4 className={`text-xs font-extrabold truncate ${t.text}`}>{r.name}</h4>
+                            <span className={`text-[8.5px] font-black uppercase px-2 py-0.5 rounded ${
+                              bType === 'Salon' ? 'bg-purple-100 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400' :
+                              bType === 'Clinic' ? 'bg-blue-100 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400' :
+                              bType === 'General Store' ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400' :
+                              'bg-orange-100 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400'
+                            }`}>
+                              {bType}
+                            </span>
+                          </div>
+                          <p className={`text-[10px] ${t.textMuted} truncate font-mono mt-0.5`}>{r.ownerEmail}</p>
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          <span className={`text-[8.5px] font-black uppercase px-2 py-0.5 rounded ${
+                            isPaid 
+                              ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' 
+                              : 'bg-red-500/10 text-red-500 border border-red-500/20'
+                          }`}>
+                            {isPaid ? 'PAID' : 'DUE'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Display warning alert bulletin message if any actively defined */}
+                      {hasActiveBulletin && (
+                        <div className="p-2.5 rounded-xl bg-amber-500/5 border border-amber-500/20 text-[10px] flex items-start gap-1 text-amber-600 font-medium">
+                          <Megaphone className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate">Active Banner: "{r.adminMessage}"</p>
+                          </div>
+                          <button 
+                            onClick={() => quickClearBulletinMessage(r)}
+                            className="text-[8px] font-black uppercase text-amber-700 bg-amber-100 dark:bg-amber-950 px-1.5 py-0.5 rounded hover:bg-amber-200 transition-all shrink-0"
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Direct Navigation Links for rapid catalog customization */}
+                      <div className="flex items-center gap-2 pt-1">
+                        <button
+                          onClick={() => {
+                            setSelectedToolsClient(r.id);
+                            setAdminMessageBody(r.adminMessage || '');
+                            setAiItemPrompt('');
+                            setAiItemName('');
+                            setAiItemPrice('');
+                            setCustomBusinessType(r.businessType || 'Restaurant');
+                            setCustomClientTheme(r.theme || 'classic-orange');
+                            setCustomStaffCodeEnabled(r.enableStaffCode || false);
+                            setActiveTab('tools');
+                          }}
+                          className={`flex-1 py-2 px-3 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-black text-[10.5px] uppercase tracking-wider flex items-center justify-center gap-1 transition-all active:scale-95`}
+                        >
+                          <Sparkles className="w-3.5 h-3.5" /> AI Catalog Setup
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            setSelectedToolsClient(r.id);
+                            setAdminMessageBody(r.adminMessage || '');
+                            setCustomBusinessType(r.businessType || 'Restaurant');
+                            setCustomClientTheme(r.theme || 'classic-orange');
+                            setCustomStaffCodeEnabled(r.enableStaffCode || false);
+                            setActiveTab('tools');
+                          }}
+                          className={`py-2 px-3 rounded-xl border border-neutral-200/60 dark:border-neutral-800 ${t.text} hover:bg-black/5 dark:hover:bg-white/5 font-black text-[10.5px] uppercase tracking-wider flex items-center justify-center gap-1 transition-all active:scale-95`}
+                          title="Configure themes and layout modifiers"
+                        >
+                          <Settings className="w-3.5 h-3.5" /> Overrides
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {homeFilteredRests.length === 0 && (
+                  <div className="text-center py-6 border-2 border-dashed rounded-2xl border-neutral-200/50">
+                    <HelpCircle className="w-8 h-8 mx-auto text-neutral-400 mb-2" />
+                    <p className="text-xs font-extrabold text-neutral-400 uppercase tracking-widest">No matching partners found</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Quick Informational Guide Footer */}
+            <div className={`p-5 rounded-3xl bg-neutral-100 dark:bg-[#161b22] border ${t.border} text-left space-y-2`}>
+              <h4 className={`text-xs font-black uppercase text-gray-400 tracking-wider flex items-center gap-1.5`}>
+                <Layers className="w-4 h-4 text-orange-500" /> Adapting to Multi-Business Dynamics
+              </h4>
+              <p className={`text-[10.5px] ${t.textMuted} leading-relaxed font-medium`}>
+                Our system automates front-ends according to partner business types:
+              </p>
+              <ul className="text-[10px] space-y-1.5 font-bold text-gray-500">
+                <li className="flex items-center gap-1">📍 <span className="text-neutral-700 dark:text-neutral-300">Beauty Salons & Clinics:</span> Enables Staff-Trackers & removes table reservations.</li>
+                <li className="flex items-center gap-1">📍 <span className="text-neutral-700 dark:text-neutral-300">Fast Food & Restaurants:</span> Activates table mapping checks and orders screen.</li>
+                <li className="flex items-center gap-1">📍 <span className="text-neutral-700 dark:text-neutral-300">General Retail Stores:</span> Transforms cart receipts to professional retail cash invoices.</li>
+              </ul>
             </div>
           </div>
         );
@@ -405,7 +893,7 @@ export default function CeoDashboard() {
                </div>
             </div>
             
-            <div className={`${t.card} rounded-3xl p-4 border ${t.border} shadow-sm flex-1`}>
+            <div className={`${t.card} rounded-3xl p-4 border ${t.border} shadow-sm flex-none`}>
               <h3 className={`text-sm font-bold uppercase tracking-wider mb-6 ml-2 ${t.textMuted}`}>Monthly Revenue</h3>
               <div className="h-[250px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
@@ -422,6 +910,33 @@ export default function CeoDashboard() {
                     <Bar dataKey="Earnings" fill={t.chartBar} radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Business Diversity Statistics */}
+            <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm space-y-4`}>
+              <div className="text-left">
+                <h3 className={`text-xs font-black uppercase tracking-widest ${t.textMuted}`}>Active Business Ratios</h3>
+                <p className={`text-[11px] ${t.textMuted}`}>Distribution of service partners by commercial category</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                {Object.entries(businessTypeCounts).map(([type, count]) => {
+                  const numCount = Number(count) || 0;
+                  return (
+                    <div key={type} className="flex items-center justify-between p-3 rounded-2xl bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5">
+                      <div className="min-w-0 pr-2 text-left">
+                        <p className={`text-xs font-bold truncate ${t.text}`}>{type}</p>
+                        <p className={`text-[10px] ${t.textMuted} font-semibold`}>
+                          {Math.round((numCount / (restaurants.length || 1)) * 100)}% of total
+                        </p>
+                      </div>
+                      <span className={`text-sm font-black px-2.5 py-1 rounded-xl shrink-0 ${t.primaryLight} ${t.primary}`}>
+                        {numCount}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -578,14 +1093,14 @@ export default function CeoDashboard() {
                                 {payments
                                   .filter(p => p.restaurantId === rest.id)
                                   .sort((a, b) => {
-                                    const aT = a.createdAt?.seconds ? a.createdAt.seconds * 1000 : new Date(a.createdAt || 0).getTime();
-                                    const bT = b.createdAt?.seconds ? b.createdAt.seconds * 1000 : new Date(b.createdAt || 0).getTime();
+                                    const aT = parseFirebaseDate(a.createdAt).getTime();
+                                    const bT = parseFirebaseDate(b.createdAt).getTime();
                                     return bT - aT;
                                   })
                                   .map(p => (
                                     <div key={p.id} className="flex items-center justify-between text-xs">
                                       <span className={`font-medium ${t.text}`}>
-                                        {p.createdAt ? format(p.createdAt.seconds ? p.createdAt.seconds * 1000 : new Date(p.createdAt), 'MMM d, yyyy • h:mm a') : 'Unknown Date'}
+                                        {format(parseFirebaseDate(p.createdAt), 'MMM d, yyyy • h:mm a')}
                                       </span>
                                       <span className={`font-bold ${t.primary}`}>₹{p.amount}</span>
                                     </div>
@@ -665,6 +1180,9 @@ export default function CeoDashboard() {
                           setAiItemPrompt('');
                           setAiItemName('');
                           setAiItemPrice('');
+                          setCustomBusinessType(r.businessType || 'Restaurant');
+                          setCustomClientTheme(r.theme || 'classic-orange');
+                          setCustomStaffCodeEnabled(r.enableStaffCode || false);
                         }}
                         className={`w-full text-left p-4 rounded-2xl border ${t.border} ${t.bg} hover:border-orange-500/40 hover:bg-black/5 dark:hover:bg-white/5 transition-all duration-200 flex items-center justify-between group active:scale-98`}
                       >
@@ -908,6 +1426,133 @@ export default function CeoDashboard() {
                     </div>
                   )}
                 </div>
+
+                {/* Card 3: Advanced Category & Style Overrides */}
+                <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm space-y-5`}>
+                  <div className="flex items-center gap-2">
+                    <Palette className={`h-5 w-5 ${t.primary}`} />
+                    <h3 className={`text-sm font-black uppercase tracking-wider ${t.text}`}>Configurations & Style Override</h3>
+                  </div>
+
+                  <p className={`text-[11px] ${t.textMuted} leading-relaxed`}>
+                     Instantly switch the target business type or apply a premium, eye-safe theme preset to match their branding style.
+                  </p>
+
+                  {/* Business Type Modifier */}
+                  <div className="space-y-2">
+                    <label className={`text-[10px] font-black uppercase tracking-widest ${t.textMuted} block`}>
+                      Commercial Business Type
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {['Restaurant', 'Fast Food', 'Salon', 'Clinic', 'General Store', 'Gym'].map(type => (
+                        <button
+                          key={type}
+                          type="button"
+                          onClick={() => setCustomBusinessType(type)}
+                          className={`py-2 px-3 rounded-2xl text-xs font-bold border transition-all ${
+                            customBusinessType === type 
+                              ? `${t.primaryBorder} ${t.primaryLight} ${t.primary} ring-2 ring-orange-500/10` 
+                              : `border-transparent bg-black/5 dark:bg-white/5 ${t.textMuted} hover:text-orange-500`
+                          }`}
+                        >
+                          {type}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Theme Modifier */}
+                  <div className="space-y-2 pt-1">
+                    <label className={`text-[10px] font-black uppercase tracking-widest ${t.textMuted} block`}>
+                      User Theme Recommendation
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { id: 'classic-orange', name: 'Classic Orange' },
+                        { id: 'modern-slate', name: 'Modern Slate' },
+                        { id: 'ultra-cute', name: 'Ultra Cute' },
+                        { id: 'neon-tech', name: 'Neon Cyber' },
+                        { id: 'sunset-luxury', name: 'Sunset Gold' }
+                      ].map(themeItem => (
+                        <button
+                          key={themeItem.id}
+                          type="button"
+                          onClick={() => setCustomClientTheme(themeItem.id)}
+                          className={`py-2 px-3 rounded-2xl text-xs font-bold border transition-all ${
+                            customClientTheme === themeItem.id 
+                              ? `${t.primaryBorder} ${t.primaryLight} ${t.primary} ring-2 ring-orange-500/10` 
+                              : `border-transparent bg-black/5 dark:bg-white/5 ${t.textMuted} hover:text-orange-500`
+                          }`}
+                        >
+                          {themeItem.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Staff Code Feature Flag */}
+                  <div className="flex items-center justify-between p-3.5 rounded-2xl bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5">
+                    <div className="pr-3 text-left">
+                      <p className={`text-xs font-bold ${t.text}`}>Staff Assistance Booking Code</p>
+                      <p className={`text-[10px] ${t.textMuted}`}>Enable custom staff tracking tables (essential for salons and clinics)</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setCustomStaffCodeEnabled(!customStaffCodeEnabled)}
+                      className={`w-12 h-6 rounded-full p-1 transition-colors duration-200 focus:outline-none shrink-0 ${
+                        customStaffCodeEnabled ? t.primaryBg : 'bg-neutral-300 dark:bg-neutral-700'
+                      }`}
+                    >
+                      <div
+                        className={`w-4 h-4 rounded-full bg-white transition-transform duration-200 ${
+                          customStaffCodeEnabled ? 'translate-x-6' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  <button
+                    onClick={handleSaveClientOverrides}
+                    disabled={updatingOverrides}
+                    className={`w-full ${t.primaryBg} text-white font-black py-3.5 rounded-xxl flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 text-xs uppercase tracking-widest`}
+                  >
+                    {updatingOverrides ? 'Saving overrides...' : 'Apply Client Configuration'} <Check className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Card 4: Blueprint Catalog Injection */}
+                <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm space-y-4`}>
+                  <div className="flex items-center gap-2">
+                    <Sparkles className={`h-5 w-5 text-emerald-500`} />
+                    <h3 className={`text-sm font-black uppercase tracking-wider ${t.text}`}>1-Click Starter Kit Catalog</h3>
+                  </div>
+
+                  <p className={`text-[11px] ${t.textMuted} leading-relaxed`}>
+                     Instantly populate custom starting blueprints. Perfect to bootstrap testing catalogs for different business categories.
+                  </p>
+
+                  <div className="space-y-2 pt-1">
+                    {[
+                      { type: 'Food & Cafe / Restaurant', desc: 'Adds Margherita Pizza, Burgers, Smoothies, Iced brews & breadsticks.' },
+                      { type: 'Beauty Salon & Spa', desc: 'Adds Hair color, Detox facial, haircutting, Pedicure, and therapy services.' },
+                      { type: 'Medical Clinic / Dentist', desc: 'Adds Physician fee, Dental scaling, child screening, dental X-Rays.' },
+                      { type: 'General Retail & Essentials', desc: 'Adds Aloe Gel, Coconut Oil, Vitamins, Body Wash, and Herbal tea.' }
+                    ].map(preset => (
+                      <button
+                        key={preset.type}
+                        type="button"
+                        onClick={() => handleInjectTemplate(preset.type)}
+                        className={`w-full text-left p-3.5 rounded-2xl border ${t.border} ${t.bg} hover:border-emerald-500/35 hover:bg-emerald-50/5 dark:hover:bg-emerald-500/5 transition-all text-sm font-bold flex flex-col gap-1`}
+                      >
+                        <div className="flex items-center justify-between w-full">
+                          <span className={`text-xs font-black ${t.text}`}>{preset.type}</span>
+                          <span className="text-[9px] font-black uppercase text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded">Inject Starter Kit</span>
+                        </div>
+                        <p className={`text-[10.5px] font-medium leading-relaxed ${t.textMuted}`}>{preset.desc}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -999,6 +1644,65 @@ export default function CeoDashboard() {
           })}
         </div>
       </nav>
+
+      {/* Custom Confirmation Dialog Overlay */}
+      {confirmModal && confirmModal.isOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className={`${t.card} w-full max-w-sm rounded-[2.5rem] p-6 border ${t.border} shadow-2xl space-y-5 text-center`}>
+            <div className="mx-auto w-12 h-12 rounded-full flex items-center justify-center bg-orange-500/10 text-orange-500">
+              <AlertCircle className="w-6 h-6" />
+            </div>
+            
+            <div className="space-y-2">
+              <h3 className={`text-lg font-black ${t.text}`}>{confirmModal.title}</h3>
+              <p className={`text-xs font-medium leading-relaxed ${t.textMuted}`}>
+                {confirmModal.message}
+              </p>
+            </div>
+
+            <div className="flex gap-2.5">
+              <button
+                type="button"
+                onClick={() => setConfirmModal(null)}
+                className={`flex-1 py-3 text-xs font-bold uppercase tracking-widest rounded-2xl border ${t.border} ${t.bg} ${t.textMuted} hover:bg-black/5 dark:hover:bg-white/5 transition-all`}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmModal.onConfirm}
+                className={`flex-1 py-3 text-xs font-black uppercase tracking-widest text-white rounded-2xl transition-all shadow-sm ${
+                  confirmModal.colorTheme === 'danger' 
+                    ? 'bg-red-500 hover:bg-red-600' 
+                    : confirmModal.colorTheme === 'success'
+                    ? 'bg-emerald-500 hover:bg-emerald-600'
+                    : 'bg-orange-500 hover:bg-orange-600'
+                }`}
+              >
+                {confirmModal.actionText}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Toast Alert Banner */}
+      {toast && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[110] w-[90%] max-w-xs animate-slide-up pointer-events-none">
+          <div className={`${t.card} border ${t.border} rounded-2xl px-4 py-3.5 shadow-xl flex items-center gap-3 bg-[#161b22]/95 backdrop-blur-md`}>
+            {toast.type === 'success' ? (
+              <div className="w-7 h-7 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0">
+                <Check className="w-4 h-4 text-emerald-500" />
+              </div>
+            ) : (
+              <div className="w-7 h-7 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-4 h-4 text-red-500" />
+              </div>
+            )}
+            <p className={`text-xs font-bold ${t.text} text-left leading-tight`}>{toast.message}</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

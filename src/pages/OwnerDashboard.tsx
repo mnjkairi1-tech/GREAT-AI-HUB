@@ -728,6 +728,10 @@ export default function OwnerDashboard() {
 
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, async (user) => {
+      if (user?.email === 'mnjkairi1@gmail.com') {
+        navigate('/ceo');
+        return;
+      }
       
       if (user) {
         setLoading(true);
@@ -803,6 +807,27 @@ export default function OwnerDashboard() {
   if (loading || !restaurant) return (
     <SleekLoader message="Opening Dashboard..." />
   );
+
+  if (restaurant.isBlocked) {
+    return (
+      <div className="min-h-screen bg-neutral-50 flex items-center justify-center p-6 text-center font-sans">
+        <motion.div
+           initial={{ opacity: 0, scale: 0.95 }}
+           animate={{ opacity: 1, scale: 1 }}
+           className="max-w-md w-full bg-white p-8 rounded-3xl shadow-xl border border-red-100"
+        >
+          <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
+            <AlertTriangle className="h-8 w-8" />
+          </div>
+          <h2 className="text-2xl font-black text-neutral-900 mb-2">Service Suspended</h2>
+          <p className="text-neutral-500 mb-6">Your access to the platform has been suspended by the system administrator. Please contact support.</p>
+          <button onClick={handleLogout} className="w-full bg-neutral-900 text-white font-bold py-3.5 rounded-xl hover:bg-neutral-800 transition-colors">
+            Log Out
+          </button>
+        </motion.div>
+      </div>
+    );
+  }
 
   const isFoodBiz = ['hotel', 'restaurant', 'fastfood', 'fast food', 'cafe'].includes(restaurant.businessType?.toLowerCase() || '');
 

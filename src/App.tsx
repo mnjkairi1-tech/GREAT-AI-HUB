@@ -10,6 +10,7 @@ import OwnerDashboard from './pages/OwnerDashboard.tsx';
 import RestaurantSetup from './pages/RestaurantSetup.tsx';
 import PublicRedirect from './pages/PublicRedirect.tsx';
 import JoinRestaurant from './pages/JoinRestaurant.tsx';
+import CeoDashboard from './pages/CeoDashboard.tsx';
 
 export default function App() {
   return (
@@ -22,8 +23,10 @@ export default function App() {
           <Route path="/setup" element={<RestaurantSetup />} />
           <Route path="/q/:qrId" element={<PublicRedirect />} />
           <Route path="/join/:restaurantId" element={<JoinRestaurant />} />
+          <Route path="/ceo" element={<CeoDashboard />} />
         </Routes>
       </div>
     </BrowserRouter>
   );
 }
+

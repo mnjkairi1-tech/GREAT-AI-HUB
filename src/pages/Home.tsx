@@ -63,9 +63,11 @@ export default function Home() {
           }
         }
         
-        // Skip redundant fetching of restaurants on Home. 
-        // OwnerDashboard will fetch them and redirect to /setup if empty.
-        navigate('/dashboard');
+        if (u.email === 'mnjkairi1@gmail.com') {
+           navigate('/ceo');
+        } else {
+           navigate('/dashboard');
+        }
       } else {
         setMode('login', true);
       }

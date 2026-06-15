@@ -14,6 +14,7 @@ export interface Restaurant {
   id: string;
   name: string;
   ownerId: string;
+  isBlocked?: boolean;
   ownerEmail?: string;
   businessType: string;
   description?: string;

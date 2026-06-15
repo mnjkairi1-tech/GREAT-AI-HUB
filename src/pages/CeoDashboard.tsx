@@ -3,7 +3,7 @@ import { db, auth } from '../lib/firebase';
 import { collection, getDocs, updateDoc, doc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { useNavigate } from 'react-router-dom';
-import { Shield, Users, LogOut, DollarSign, Activity, AlertCircle, Home, BarChart2, Settings, Power, Edit2, CheckCircle2 } from 'lucide-react';
+import { Shield, Users, LogOut, DollarSign, Activity, AlertCircle, Home, BarChart2, Settings, Power, Edit2, CheckCircle2, Palette } from 'lucide-react';
 import { startOfMonth, endOfMonth, isWithinInterval, startOfYear, endOfYear, format } from 'date-fns';
 import { Restaurant } from '../types';
 import SleekLoader from '../components/SleekLoader';
@@ -18,6 +18,29 @@ interface PlatformPayment {
   createdAt: any;
 }
 
+const THEMES = [
+  { 
+    id: 'dark', name: 'Midnight Dark', 
+    colors: { bg: 'bg-[#0d1117]', card: 'bg-[#161b22]', text: 'text-white', textMuted: 'text-gray-400', border: 'border-gray-800', primary: 'text-orange-500', primaryBg: 'bg-orange-500', primaryLight: 'bg-orange-500/10', primaryBorder: 'border-orange-500/20', chartBar: '#f97316' }
+  },
+  { 
+    id: 'cotton', name: 'Cotton Candy', 
+    colors: { bg: 'bg-pink-50', card: 'bg-white', text: 'text-neutral-900', textMuted: 'text-neutral-500', border: 'border-pink-200', primary: 'text-pink-500', primaryBg: 'bg-pink-500', primaryLight: 'bg-pink-100', primaryBorder: 'border-pink-200', chartBar: '#ec4899' }
+  },
+  { 
+    id: 'mint', name: 'Minty Fresh', 
+    colors: { bg: 'bg-emerald-50', card: 'bg-white', text: 'text-neutral-900', textMuted: 'text-emerald-700', border: 'border-emerald-200', primary: 'text-emerald-600', primaryBg: 'bg-emerald-500', primaryLight: 'bg-emerald-100', primaryBorder: 'border-emerald-200', chartBar: '#10b981' }
+  },
+  { 
+    id: 'lavender', name: 'Lavender Dream', 
+    colors: { bg: 'bg-purple-50', card: 'bg-white', text: 'text-neutral-900', textMuted: 'text-purple-600', border: 'border-purple-200', primary: 'text-purple-600', primaryBg: 'bg-purple-500', primaryLight: 'bg-purple-100', primaryBorder: 'border-purple-200', chartBar: '#8b5cf6' }
+  },
+  { 
+    id: 'ocean', name: 'Ocean Breeze', 
+    colors: { bg: 'bg-blue-50', card: 'bg-white', text: 'text-neutral-900', textMuted: 'text-blue-600', border: 'border-blue-200', primary: 'text-blue-500', primaryBg: 'bg-blue-500', primaryLight: 'bg-blue-100', primaryBorder: 'border-blue-200', chartBar: '#3b82f6' }
+  }
+];
+
 export default function CeoDashboard() {
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [payments, setPayments] = useState<PlatformPayment[]>([]);
@@ -28,6 +51,16 @@ export default function CeoDashboard() {
   // For editing fee
   const [editingFeeId, setEditingFeeId] = useState<string | null>(null);
   const [tempFee, setTempFee] = useState<string>('');
+
+  // Theme support
+  const [themeId, setThemeId] = useState<string>(() => localStorage.getItem('ceoTheme') || 'dark');
+  const t = useMemo(() => THEMES.find(th => th.id === themeId)?.colors || THEMES[0].colors, [themeId]);
+
+  const changeTheme = (id: string) => {
+    setThemeId(id);
+    localStorage.setItem('ceoTheme', id);
+  };
+
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
@@ -170,23 +203,23 @@ export default function CeoDashboard() {
       case 'home':
         return (
           <div className="space-y-4 p-4 pb-24">
-            <h2 className="text-xl font-black text-white mb-6">Overview</h2>
-            <div className="bg-[#161b22] rounded-3xl p-6 border border-gray-800 shadow-sm">
-               <p className="text-sm font-bold tracking-wider text-gray-400 uppercase mb-2">Platform Revenue</p>
-               <h3 className="text-4xl font-black text-white">₹{totalEarnings.toLocaleString()}</h3>
-               <p className="text-xs text-gray-500 font-medium mt-2">All-time collected subscription fees</p>
+            <h2 className={`text-xl font-black mb-6 ${t.text}`}>Overview</h2>
+            <div className={`${t.card} rounded-3xl p-6 border ${t.border} shadow-sm`}>
+               <p className={`text-sm font-bold tracking-wider uppercase mb-2 ${t.textMuted}`}>Platform Revenue</p>
+               <h3 className={`text-4xl font-black ${t.text}`}>₹{totalEarnings.toLocaleString()}</h3>
+               <p className={`text-xs font-medium mt-2 ${t.textMuted}`}>All-time collected subscription fees</p>
             </div>
             
             <div className="grid grid-cols-2 gap-4">
-              <div className="bg-[#161b22] rounded-3xl p-5 border border-gray-800 shadow-sm">
-                <Users className="h-6 w-6 text-orange-500 mb-3" />
-                <h4 className="text-3xl font-black text-white">{restaurants.length}</h4>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mt-1">Active Users</p>
+              <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm`}>
+                <Users className={`h-6 w-6 mb-3 ${t.primary}`} />
+                <h4 className={`text-3xl font-black ${t.text}`}>{restaurants.length}</h4>
+                <p className={`text-xs font-semibold uppercase tracking-widest mt-1 ${t.textMuted}`}>Active Users</p>
               </div>
-              <div className="bg-[#161b22] rounded-3xl p-5 border border-gray-800 shadow-sm">
-                <Activity className="h-6 w-6 text-emerald-400 mb-3" />
-                <h4 className="text-3xl font-black text-white">{payments.length}</h4>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mt-1">Total Payments</p>
+              <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm`}>
+                <Activity className={`h-6 w-6 mb-3 ${t.primary}`} />
+                <h4 className={`text-3xl font-black ${t.text}`}>{payments.length}</h4>
+                <p className={`text-xs font-semibold uppercase tracking-widest mt-1 ${t.textMuted}`}>Total Payments</p>
               </div>
             </div>
           </div>
@@ -195,34 +228,36 @@ export default function CeoDashboard() {
       case 'charts':
         return (
           <div className="space-y-4 p-4 pb-24 h-full flex flex-col">
-            <h2 className="text-xl font-black text-white mb-2">Financials</h2>
+            <h2 className={`text-xl font-black mb-2 ${t.text}`}>Financials</h2>
             <div className="grid grid-cols-2 gap-4 mb-4">
-               <div className="bg-[#161b22] rounded-2xl p-4 border border-gray-800 shadow-sm">
-                 <p className="text-[10px] font-bold tracking-widest text-gray-400 uppercase mb-1">This Month</p>
-                 <h4 className="text-xl font-black text-white">₹{monthlyEarnings.toLocaleString()}</h4>
+               <div className={`${t.card} rounded-2xl p-4 border ${t.border} shadow-sm`}>
+                 <p className={`text-[10px] font-bold tracking-widest uppercase mb-1 ${t.textMuted}`}>This Month</p>
+                 <h4 className={`text-xl font-black ${t.text}`}>₹{monthlyEarnings.toLocaleString()}</h4>
                </div>
-               <div className="bg-[#161b22] rounded-2xl p-4 border border-gray-800 shadow-sm">
-                 <p className="text-[10px] font-bold tracking-widest text-gray-400 uppercase mb-1">This Year</p>
-                 <h4 className="text-xl font-black text-white">₹{yearlyEarnings.toLocaleString()}</h4>
+               <div className={`${t.card} rounded-2xl p-4 border ${t.border} shadow-sm`}>
+                 <p className={`text-[10px] font-bold tracking-widest uppercase mb-1 ${t.textMuted}`}>This Year</p>
+                 <h4 className={`text-xl font-black ${t.text}`}>₹{yearlyEarnings.toLocaleString()}</h4>
                </div>
             </div>
             
-            <div className="bg-[#161b22] rounded-3xl p-4 border border-gray-800 shadow-sm flex-1 min-h-[300px]">
-              <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-6 ml-2">Monthly Revenue</h3>
-              <ResponsiveContainer width="100%" height="80%">
-                <BarChart data={chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2d3748" vertical={false} />
-                  <XAxis dataKey="name" stroke="#a3a3a3" fontSize={10} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#a3a3a3" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(val) => `₹${val}`} />
-                  <Tooltip 
-                    cursor={{fill: '#2d3748', opacity: 0.4}}
-                    contentStyle={{ backgroundColor: '#1a202c', borderColor: '#2d3748', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                    itemStyle={{ color: '#fff', fontWeight: 'bold' }}
-                    labelStyle={{ color: '#a0aec0', marginBottom: '4px' }}
-                  />
-                  <Bar dataKey="Earnings" fill="#f97316" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+            <div className={`${t.card} rounded-3xl p-4 border ${t.border} shadow-sm flex-1`}>
+              <h3 className={`text-sm font-bold uppercase tracking-wider mb-6 ml-2 ${t.textMuted}`}>Monthly Revenue</h3>
+              <div className="h-[250px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={themeId === 'dark' ? '#2d3748' : '#e5e5e5'} vertical={false} />
+                    <XAxis dataKey="name" stroke={themeId === 'dark' ? '#a3a3a3' : '#737373'} fontSize={10} tickLine={false} axisLine={false} />
+                    <YAxis stroke={themeId === 'dark' ? '#a3a3a3' : '#737373'} fontSize={10} tickLine={false} axisLine={false} tickFormatter={(val) => `₹${val}`} width={40} />
+                    <Tooltip 
+                      cursor={{fill: themeId === 'dark' ? '#2d3748' : '#f5f5f5', opacity: 0.4}}
+                      contentStyle={{ backgroundColor: themeId === 'dark' ? '#1a202c' : '#fff', borderColor: themeId === 'dark' ? '#2d3748' : '#e5e5e5', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                      itemStyle={{ color: themeId === 'dark' ? '#fff' : '#000', fontWeight: 'bold' }}
+                      labelStyle={{ color: themeId === 'dark' ? '#a0aec0' : '#737373', marginBottom: '4px' }}
+                    />
+                    <Bar dataKey="Earnings" fill={t.chartBar} radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             </div>
           </div>
         );
@@ -230,9 +265,9 @@ export default function CeoDashboard() {
       case 'clients':
         return (
           <div className="space-y-4 p-4 pb-24">
-            <h2 className="text-xl font-black text-white mb-6">Service Users</h2>
+            <h2 className={`text-xl font-black mb-6 ${t.text}`}>Service Users</h2>
             {restaurants.length === 0 ? (
-              <p className="text-center text-gray-500 font-medium py-10">No active businesses yet.</p>
+              <p className={`text-center font-medium py-10 ${t.textMuted}`}>No active businesses yet.</p>
             ) : (
               <div className="space-y-4">
                 {restaurants.map(rest => {
@@ -241,18 +276,18 @@ export default function CeoDashboard() {
                   const isEditing = editingFeeId === rest.id;
 
                   return (
-                    <div key={rest.id} className="bg-[#161b22] rounded-3xl p-5 border border-gray-800 shadow-sm">
+                    <div key={rest.id} className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm`}>
                       <div className="flex items-start justify-between mb-4">
                         <div>
-                          <h4 className="font-bold text-white text-base">{rest.name}</h4>
-                          <p className="text-xs text-gray-500 font-medium mt-1">{rest.ownerEmail}</p>
+                          <h4 className={`font-bold text-base ${t.text}`}>{rest.name}</h4>
+                          <p className={`text-xs font-medium mt-1 ${t.textMuted}`}>{rest.ownerEmail}</p>
                         </div>
                         <button
                           onClick={() => toggleRestaurantBlock(rest.id, !!rest.isBlocked)}
                           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider transition-all ${
                             rest.isBlocked 
-                              ? 'bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-emerald-500/10 hover:text-emerald-400 hover:border-emerald-500/20' 
-                              : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/20'
+                              ? 'bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-emerald-500/10 hover:text-emerald-500 hover:border-emerald-500/20' 
+                              : `bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/20`
                           }`}
                         >
                           <Power className="h-3 w-3" />
@@ -260,24 +295,24 @@ export default function CeoDashboard() {
                         </button>
                       </div>
 
-                      <div className="flex items-center justify-between pt-3 border-t border-gray-800">
+                      <div className={`flex items-center justify-between pt-3 border-t ${t.border}`}>
                         {isEditing ? (
                           <div className="flex items-center gap-2">
-                            <span className="text-sm font-bold text-gray-500">₹</span>
+                            <span className={`text-sm font-bold ${t.textMuted}`}>₹</span>
                             <input 
                               type="number" 
                               value={tempFee}
                               onChange={(e) => setTempFee(e.target.value)}
-                              className="w-20 px-2 py-1 text-sm font-bold border border-gray-700 bg-[#0d1117] text-white rounded-lg outline-none focus:border-orange-500"
+                              className={`w-20 px-2 py-1 text-sm font-bold border ${t.border} ${t.bg} ${t.text} rounded-lg outline-none`}
                               autoFocus
                             />
-                            <button onClick={() => saveFee(rest.id)} className="p-1.5 bg-orange-500 text-white rounded-lg"><CheckCircle2 className="h-4 w-4"/></button>
-                            <button onClick={() => setEditingFeeId(null)} className="p-1.5 bg-gray-800 text-gray-400 rounded-lg text-xs font-bold px-3">X</button>
+                            <button onClick={() => saveFee(rest.id)} className={`p-1.5 ${t.primaryBg} text-white rounded-lg`}><CheckCircle2 className="h-4 w-4"/></button>
+                            <button onClick={() => setEditingFeeId(null)} className={`p-1.5 ${t.bg} ${t.textMuted} rounded-lg text-xs font-bold px-3`}>X</button>
                           </div>
                         ) : (
                           <div className="flex items-center gap-2">
-                            <p className="text-sm font-bold text-gray-300">Fee: ₹{fee}</p>
-                            <button onClick={() => { setEditingFeeId(rest.id); setTempFee(fee.toString()); }} className="text-gray-500 hover:text-orange-500">
+                            <p className={`text-sm font-bold ${t.text}`}>Fee: ₹{fee}</p>
+                            <button onClick={() => { setEditingFeeId(rest.id); setTempFee(fee.toString()); }} className={`${t.textMuted} hover:${t.primary}`}>
                               <Edit2 className="h-3.5 w-3.5" />
                             </button>
                           </div>
@@ -286,13 +321,13 @@ export default function CeoDashboard() {
                         {!isPaid ? (
                           <button 
                             onClick={() => markPaid(rest)}
-                            className="bg-orange-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm hover:bg-orange-600 transition-colors"
+                            className={`${t.primaryBg} text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm transition-colors opacity-90 hover:opacity-100`}
                           >
                             Mark Paid
                           </button>
                         ) : (
-                          <span className="flex items-center gap-1 text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-xl text-xs font-bold border border-emerald-500/20 cursor-default">
-                            <CheckCircle2 className="h-4 w-4" /> Paid This Month
+                          <span className={`flex items-center gap-1 ${t.primary} ${t.primaryLight} px-3 py-1.5 rounded-xl text-xs font-bold border ${t.primaryBorder} cursor-default`}>
+                            <CheckCircle2 className="h-4 w-4" /> Paid Monthly
                           </span>
                         )}
                       </div>
@@ -307,11 +342,32 @@ export default function CeoDashboard() {
       case 'settings':
         return (
           <div className="space-y-4 p-4 pb-24 flex flex-col h-full justify-center text-center max-w-sm mx-auto">
-            <div className="w-24 h-24 bg-orange-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-orange-500/20">
-              <Shield className="h-10 w-10 text-orange-500" />
+            <div className={`w-24 h-24 ${t.primaryLight} rounded-full flex items-center justify-center mx-auto mb-6 border ${t.primaryBorder}`}>
+              <Shield className={`h-10 w-10 ${t.primary}`} />
             </div>
-            <h2 className="text-2xl font-black text-white mb-2">CEO Terminal</h2>
-            <p className="text-sm font-medium text-gray-500 mb-8">mnjkairi1@gmail.com</p>
+            <h2 className={`text-2xl font-black mb-2 ${t.text}`}>CEO Terminal</h2>
+            <p className={`text-sm font-medium mb-8 ${t.textMuted}`}>mnjkairi1@gmail.com</p>
+
+            <div className={`mb-8 p-6 rounded-3xl border ${t.border} ${t.card} text-left`}>
+              <h3 className={`text-sm font-bold uppercase tracking-wider mb-4 flex items-center gap-2 ${t.text}`}>
+                <Palette className={`h-4 w-4 ${t.primary}`} /> Theme
+              </h3>
+              <div className="flex flex-wrap gap-3">
+                {THEMES.map(theme => (
+                  <button
+                    key={theme.id}
+                    onClick={() => changeTheme(theme.id)}
+                    className={`px-4 py-2 rounded-xl text-sm font-bold transition-all border ${
+                      themeId === theme.id 
+                        ? `${t.primaryBorder} ${t.primaryLight} ${t.primary}` 
+                        : `${t.border} ${t.bg} ${t.textMuted}`
+                    }`}
+                  >
+                    {theme.name}
+                  </button>
+                ))}
+              </div>
+            </div>
             
             <button
                onClick={handleLogout}
@@ -326,11 +382,11 @@ export default function CeoDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0d1117] text-gray-100 font-sans selection:bg-orange-500/30 flex flex-col">
+    <div className={`min-h-screen ${t.bg} ${t.text} font-sans flex flex-col transition-colors duration-300`}>
       {/* Top Header */}
-      <header className="bg-[#0d1117]/80 backdrop-blur-md px-6 py-4 sticky top-0 z-40 border-b border-gray-800">
-        <h1 className="text-lg font-black tracking-widest uppercase flex items-center justify-center gap-2 text-white">
-          <Shield className="h-5 w-5 text-orange-500" /> CEO Dashboard
+      <header className={`${t.bg}/80 backdrop-blur-md px-6 py-4 sticky top-0 z-40 border-b ${t.border}`}>
+        <h1 className={`text-lg font-black tracking-widest uppercase flex items-center justify-center gap-2 ${t.text}`}>
+          <Shield className={`h-5 w-5 ${t.primary}`} /> CEO Dashboard
         </h1>
       </header>
 
@@ -340,7 +396,7 @@ export default function CeoDashboard() {
       </main>
 
       {/* Mobile Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-[#161b22] border-t border-gray-800 pb-safe z-50">
+      <nav className={`fixed bottom-0 left-0 right-0 ${t.card} border-t ${t.border} pb-safe z-50`}>
         <div className="flex items-center justify-around p-3 md:max-w-md mx-auto">
           {[
             { id: 'home', icon: Home, label: 'Home' },
@@ -355,10 +411,10 @@ export default function CeoDashboard() {
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as TabType)}
                 className={`flex flex-col items-center justify-center w-16 gap-1 transition-all ${
-                  isActive ? 'text-orange-500 scale-110' : 'text-gray-500 hover:text-gray-400'
+                  isActive ? `${t.primary} scale-110` : `${t.textMuted} hover:opacity-80`
                 }`}
               >
-                <div className={`p-2 rounded-xl ${isActive ? 'bg-orange-500/10' : 'bg-transparent'}`}>
+                <div className={`p-2 rounded-xl ${isActive ? t.primaryLight : 'bg-transparent'}`}>
                   <Icon className={`h-6 w-6 stroke-[2.5px]`} />
                 </div>
                 {isActive && <span className="text-[10px] font-black uppercase tracking-wider">{tab.label}</span>}

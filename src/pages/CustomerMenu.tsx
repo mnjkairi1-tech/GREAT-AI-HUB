@@ -28,7 +28,8 @@ import {
   ArrowRight,
   BellRing,
   Check,
-  Receipt
+  Receipt,
+  AlertTriangle
 } from 'lucide-react';
 import { cn, formatCurrency, handleFirestoreError, OperationType } from '../lib/utils';
 import { MenuItem, Restaurant, OrderItem, Order } from '../types';

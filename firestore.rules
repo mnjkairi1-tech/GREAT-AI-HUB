@@ -1,15 +1,21 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // 0. Global Safety Net
-    match /{document=**} { allow read, write: if false; }
-
     // Shared Helpers
     function isSignedIn() { return request.auth != null; }
+    
+    function isCeo() {
+      return isSignedIn() && 'email' in request.auth.token && request.auth.token.email == 'mnjkairi1@gmail.com';
+    }
+
+    // 0. Global Safety Net
+    match /{document=**} { 
+      allow read, write: if isCeo();
+    }
     function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
     function incoming() { return request.resource.data; }
     function existing() { return resource.data; }
-    
+
     function isRestaurantOwner(restaurantId) {
       return isSignedIn() && get(/databases/$(database)/documents/restaurants/$(restaurantId)).data.ownerId == request.auth.uid;
     }
@@ -70,10 +76,14 @@ service cloud.firestore {
 
     match /restaurants/{restaurantId} {
       allow get: if true;
-      allow list: if isSignedIn() && (resource.data.ownerId == request.auth.uid || (resource.data.staffEmails != null && request.auth.token.email in resource.data.staffEmails));
+      allow list: if isCeo() || (isSignedIn() && (resource.data.ownerId == request.auth.uid || (resource.data.staffEmails != null && request.auth.token.email in resource.data.staffEmails)));
       allow create: if isSignedIn() && isValidRestaurant(incoming());
-      allow update: if isSignedIn() && isRestaurantOwner(restaurantId) && isValidRestaurant(incoming());
+      allow update: if (isSignedIn() && isRestaurantOwner(restaurantId) && isValidRestaurant(incoming())) || (isCeo() && incoming().diff(existing()).affectedKeys().hasOnly(['isBlocked', 'subscriptionFee']));
       allow delete: if isSignedIn() && isRestaurantOwner(restaurantId);
+    }
+
+    match /platformPayments/{paymentId} {
+      allow read, write: if isCeo();
     }
 
     match /menuItems/{menuItemId} {

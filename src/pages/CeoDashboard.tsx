@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db, auth } from '../lib/firebase';
-import { collection, getDocs, updateDoc, doc, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, updateDoc, doc, addDoc, serverTimestamp, query, where } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { useNavigate } from 'react-router-dom';
 import { Shield, Users, LogOut, DollarSign, Activity, AlertCircle, Home, BarChart2, Settings, Power, Edit2, CheckCircle2, Palette, History } from 'lucide-react';
@@ -53,6 +53,39 @@ export default function CeoDashboard() {
   const [tempFee, setTempFee] = useState<string>('');
   const [clientTab, setClientTab] = useState<'basic' | 'standard' | 'pro'>('standard');
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
+  const [clientStats, setClientStats] = useState<Record<string, { monthlyEarning: number, isLoading: boolean }>>({});
+
+  const loadClientStats = async (restId: string) => {
+    if (clientStats[restId]) return;
+    setClientStats(prev => ({ ...prev, [restId]: { monthlyEarning: 0, isLoading: true } }));
+    try {
+      const q = query(
+        collection(db, 'orders'),
+        where('restaurantId', '==', restId),
+        where('status', '==', 'COMPLETED')
+      );
+      const snap = await getDocs(q);
+      const orders = snap.docs.map(doc => doc.data() as any);
+      
+      const now = new Date();
+      const mStart = startOfMonth(now);
+      const mEnd = endOfMonth(now);
+      
+      const monthlyEarning = orders.reduce((sum, order) => {
+        if (!order.createdAt) return sum;
+        const dbDate = order.createdAt.seconds ? new Date(order.createdAt.seconds * 1000) : new Date(order.createdAt);
+        if (isWithinInterval(dbDate, { start: mStart, end: mEnd })) {
+          return sum + (order.total || 0);
+        }
+        return sum;
+      }, 0);
+      
+      setClientStats(prev => ({ ...prev, [restId]: { monthlyEarning, isLoading: false } }));
+    } catch (err) {
+      console.error("Failed to fetch client stats", err);
+      setClientStats(prev => ({ ...prev, [restId]: { monthlyEarning: 0, isLoading: false } }));
+    }
+  };
 
   const getLatestPaymentDate = (restId: string) => {
     const restPayments = payments.filter(p => p.restaurantId === restId);
@@ -324,7 +357,14 @@ export default function CeoDashboard() {
                     <div key={rest.id} className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm transition-all`}>
                       <div className="flex items-start justify-between mb-4">
                         <div>
-                          <h4 className={`font-bold text-base ${t.text}`}>{rest.name}</h4>
+                          <h4 className={`font-bold text-base flex items-center gap-2 ${t.text}`}>
+                            {rest.name}
+                            {rest.businessType && (
+                              <span className={`text-[9px] px-2 py-0.5 rounded-md uppercase tracking-widest font-black ${t.primaryLight} ${t.primary}`}>
+                                {rest.businessType}
+                              </span>
+                            )}
+                          </h4>
                           <p className={`text-xs font-medium mt-1 ${t.textMuted}`}>{rest.ownerEmail}</p>
                         </div>
                         <button
@@ -347,7 +387,7 @@ export default function CeoDashboard() {
                             <input 
                               type="number" 
                               value={tempFee}
-                              onChange={(e) => setTempFee(e.target.value)}
+                              onChange={e => setTempFee(e.target.value)}
                               className={`w-20 px-2 py-1 text-sm font-bold border ${t.border} ${t.bg} ${t.text} rounded-lg outline-none`}
                               autoFocus
                             />
@@ -365,7 +405,14 @@ export default function CeoDashboard() {
 
                         <div className="flex items-center gap-2">
                           <button
-                            onClick={() => setExpandedHistoryId(expandedHistoryId === rest.id ? null : rest.id)}
+                            onClick={() => {
+                              if (expandedHistoryId !== rest.id) {
+                                setExpandedHistoryId(rest.id);
+                                loadClientStats(rest.id);
+                              } else {
+                                setExpandedHistoryId(null);
+                              }
+                            }}
                             className={`p-1.5 rounded-full hover:${t.primaryLight} ${t.textMuted} transition-colors`}
                           >
                             <History className="h-4 w-4" />
@@ -387,29 +434,45 @@ export default function CeoDashboard() {
                       </div>
 
                       {expandedHistoryId === rest.id && (
-                        <div className={`mt-4 p-3 rounded-2xl ${t.bg} border ${t.border}`}>
-                          <h5 className={`text-[10px] font-black uppercase tracking-widest ${t.textMuted} mb-2`}>Payment History</h5>
-                          {payments.filter(p => p.restaurantId === rest.id).length === 0 ? (
-                            <p className={`text-xs font-medium ${t.textMuted}`}>No payments recorded yet.</p>
-                          ) : (
-                            <div className="space-y-2">
-                              {payments
-                                .filter(p => p.restaurantId === rest.id)
-                                .sort((a, b) => {
-                                  const aT = a.createdAt?.seconds ? a.createdAt.seconds * 1000 : new Date(a.createdAt || 0).getTime();
-                                  const bT = b.createdAt?.seconds ? b.createdAt.seconds * 1000 : new Date(b.createdAt || 0).getTime();
-                                  return bT - aT;
-                                })
-                                .map(p => (
-                                  <div key={p.id} className="flex items-center justify-between text-xs">
-                                    <span className={`font-medium ${t.text}`}>
-                                      {p.createdAt ? format(p.createdAt.seconds ? p.createdAt.seconds * 1000 : new Date(p.createdAt), 'MMM d, yyyy • h:mm a') : 'Unknown Date'}
-                                    </span>
-                                    <span className={`font-bold ${t.primary}`}>₹{p.amount}</span>
-                                  </div>
-                                ))}
-                            </div>
-                          )}
+                        <div className={`mt-4 p-3 rounded-2xl ${t.bg} border ${t.border} space-y-4`}>
+                          
+                          {/* Monthly Earning Stats */}
+                          <div className="flex items-center justify-between">
+                            <span className={`text-[10px] font-black uppercase tracking-widest ${t.textMuted}`}>Monthly Earning</span>
+                            {clientStats[rest.id]?.isLoading ? (
+                               <span className={`text-xs font-bold ${t.textMuted}`}>Loading...</span>
+                            ) : (
+                               <span className={`text-sm font-black ${t.text}`}>₹{(clientStats[rest.id]?.monthlyEarning || 0).toLocaleString()}</span>
+                            )}
+                          </div>
+
+                          <div className="h-px w-full bg-black/5 dark:bg-white/5" />
+
+                          <div>
+                            <h5 className={`text-[10px] font-black uppercase tracking-widest ${t.textMuted} mb-2`}>Payment History</h5>
+                            {payments.filter(p => p.restaurantId === rest.id).length === 0 ? (
+                              <p className={`text-xs font-medium ${t.textMuted}`}>No payments recorded yet.</p>
+                            ) : (
+                              <div className="space-y-2">
+                                {payments
+                                  .filter(p => p.restaurantId === rest.id)
+                                  .sort((a, b) => {
+                                    const aT = a.createdAt?.seconds ? a.createdAt.seconds * 1000 : new Date(a.createdAt || 0).getTime();
+                                    const bT = b.createdAt?.seconds ? b.createdAt.seconds * 1000 : new Date(b.createdAt || 0).getTime();
+                                    return bT - aT;
+                                  })
+                                  .map(p => (
+                                    <div key={p.id} className="flex items-center justify-between text-xs">
+                                      <span className={`font-medium ${t.text}`}>
+                                        {p.createdAt ? format(p.createdAt.seconds ? p.createdAt.seconds * 1000 : new Date(p.createdAt), 'MMM d, yyyy • h:mm a') : 'Unknown Date'}
+                                      </span>
+                                      <span className={`font-bold ${t.primary}`}>₹{p.amount}</span>
+                                    </div>
+                                  ))}
+                              </div>
+                            )}
+                          </div>
+
                         </div>
                       )}
                     </div>

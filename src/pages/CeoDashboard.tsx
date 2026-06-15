@@ -157,7 +157,7 @@ export default function CeoDashboard() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prompt: aiItemPrompt,
+          promptText: aiItemPrompt,
           businessType: rest.businessType || 'Store'
         })
       });

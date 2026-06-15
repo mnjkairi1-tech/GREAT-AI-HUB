@@ -3,13 +3,13 @@ import { db, auth } from '../lib/firebase';
 import { collection, getDocs, updateDoc, doc, addDoc, serverTimestamp, query, where } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { useNavigate } from 'react-router-dom';
-import { Shield, Users, LogOut, DollarSign, Activity, AlertCircle, Home, BarChart2, Settings, Power, Edit2, CheckCircle2, Palette, History } from 'lucide-react';
+import { Shield, Users, LogOut, DollarSign, Activity, AlertCircle, Home, BarChart2, Settings, Power, Edit2, CheckCircle2, Palette, History, Wrench, MessageSquare, Send, X, PlusCircle, Sparkles, Search, Megaphone, ArrowLeft, Check, HelpCircle } from 'lucide-react';
 import { startOfMonth, endOfMonth, isWithinInterval, startOfYear, endOfYear, format } from 'date-fns';
 import { Restaurant } from '../types';
 import SleekLoader from '../components/SleekLoader';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
-type TabType = 'home' | 'charts' | 'clients' | 'settings';
+type TabType = 'home' | 'charts' | 'clients' | 'tools' | 'settings';
 
 interface PlatformPayment {
   id: string;
@@ -55,6 +55,22 @@ export default function CeoDashboard() {
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
   const [clientStats, setClientStats] = useState<Record<string, { monthlyEarning: number, isLoading: boolean }>>({});
 
+  // Tools Tab State
+  const [selectedToolsClient, setSelectedToolsClient] = useState<string>('');
+  const [clientSearchQuery, setClientSearchQuery] = useState('');
+  const [activeAddTab, setActiveAddTab] = useState<'ai' | 'manual'>('ai');
+  
+  // Message State
+  const [adminMessageBody, setAdminMessageBody] = useState('');
+  const [sendingMessage, setSendingMessage] = useState(false);
+  
+  // AI Add Items State
+  const [aiItemName, setAiItemName] = useState('');
+  const [aiItemPrice, setAiItemPrice] = useState('');
+  const [aiItemPrompt, setAiItemPrompt] = useState('');
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiError, setAiError] = useState('');
+
   const loadClientStats = async (restId: string) => {
     if (clientStats[restId]) return;
     setClientStats(prev => ({ ...prev, [restId]: { monthlyEarning: 0, isLoading: true } }));
@@ -85,6 +101,95 @@ export default function CeoDashboard() {
       console.error("Failed to fetch client stats", err);
       setClientStats(prev => ({ ...prev, [restId]: { monthlyEarning: 0, isLoading: false } }));
     }
+  };
+
+  const handleSendAdminMessage = async () => {
+    if (!selectedToolsClient || !adminMessageBody.trim()) return;
+    setSendingMessage(true);
+    try {
+      await updateDoc(doc(db, 'restaurants', selectedToolsClient), {
+        adminMessage: adminMessageBody.trim()
+      });
+      alert('Message sent to client!');
+      setAdminMessageBody('');
+    } catch (e) {
+      console.error(e);
+      alert('Failed to send message');
+    }
+    setSendingMessage(false);
+  };
+
+  const handleManualAddItem = async () => {
+    if (!selectedToolsClient || !aiItemName.trim()) return;
+    try {
+      const rest = restaurants.find(r => r.id === selectedToolsClient);
+      if (!rest) return;
+      
+      await addDoc(collection(db, 'menuItems'), {
+        restaurantId: rest.id,
+        businessType: rest.businessType || 'General Store',
+        name: aiItemName.trim(),
+        price: isNaN(parseFloat(aiItemPrice)) ? 0 : parseFloat(aiItemPrice),
+        category: 'Admin Added',
+        createdAt: serverTimestamp()
+      });
+      
+      alert('Item added successfully to client catalog!');
+      setAiItemName('');
+      setAiItemPrice('');
+    } catch (err) {
+      console.error(err);
+      alert('Failed to add item');
+    }
+  };
+
+  const handleAIAddItem = async () => {
+    if (!selectedToolsClient || !aiItemPrompt.trim()) return;
+    setAiGenerating(true);
+    setAiError('');
+    try {
+      const rest = restaurants.find(r => r.id === selectedToolsClient);
+      if (!rest) throw new Error("Client not found");
+
+      const response = await fetch('/api/gemini/generate-menu-items-bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: aiItemPrompt,
+          businessType: rest.businessType || 'Store'
+        })
+      });
+
+      const textRes = await response.text();
+      let dataList;
+      try {
+        dataList = JSON.parse(textRes);
+      } catch (err) {
+        throw new Error("AI generated an invalid response.");
+      }
+
+      if (!response.ok) {
+        throw new Error(dataList?.error || 'AI bulk add failed');
+      }
+
+      await Promise.all(dataList.map((item: any) => 
+        addDoc(collection(db, 'menuItems'), {
+           restaurantId: rest.id,
+           businessType: rest.businessType || 'Store',
+           name: item.name || 'Unknown Item',
+           price: parseFloat(item.price) || 0,
+           category: item.category || 'AI Generated',
+           createdAt: serverTimestamp()
+        })
+      ));
+
+      alert('AI items added to client catalog!');
+      setAiItemPrompt('');
+    } catch (e: any) {
+      console.error(e);
+      setAiError(e.message || 'Failed to generate items');
+    }
+    setAiGenerating(false);
   };
 
   const getLatestPaymentDate = (restId: string) => {
@@ -496,6 +601,315 @@ export default function CeoDashboard() {
         );
       }
 
+      case 'tools': {
+        const filteredClients = restaurants.filter(r => {
+          const q = clientSearchQuery.toLowerCase();
+          return (r.name || '').toLowerCase().includes(q) || (r.ownerEmail || '').toLowerCase().includes(q);
+        });
+
+        const currentClient = restaurants.find(r => r.id === selectedToolsClient);
+
+        return (
+          <div className="space-y-6 p-4 pb-24">
+            <div className="flex items-center gap-2 mb-2">
+              <Wrench className={`h-6 w-6 ${t.text}`} />
+              <h2 className={`text-xl font-black ${t.text}`}>Admin Tools</h2>
+            </div>
+            
+            {!selectedToolsClient ? (
+              <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm space-y-4`}>
+                <div>
+                  <h3 className={`text-sm font-black uppercase tracking-wider mb-1 ${t.text}`}>Select Client Account</h3>
+                  <p className={`text-[11px] ${t.textMuted}`}>Select a partner from below to broadcast announcement messages or customize their digital item catlogs remotely.</p>
+                </div>
+                
+                {/* Search / Filter bar for clients */}
+                <div className="relative">
+                  <Search className={`absolute left-4 top-3.5 h-4 w-4 ${t.textMuted}`} />
+                  <input 
+                    type="text" 
+                    placeholder="Search by owner email or business name..." 
+                    value={clientSearchQuery}
+                    onChange={(e) => setClientSearchQuery(e.target.value)}
+                    className={`w-full rounded-2xl border ${t.border} ${t.bg} pl-11 pr-10 py-3 outline-none ${t.text} text-sm font-medium transition-all focus:ring-1 focus:ring-orange-500`}
+                  />
+                  {clientSearchQuery && (
+                    <button 
+                      onClick={() => setClientSearchQuery('')}
+                      className="absolute right-3 top-3 p-1 rounded-full hover:bg-black/5 dark:hover:bg-white/5"
+                    >
+                      <X className={`w-4 h-4 ${t.textMuted}`} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Styled client lists */}
+                <div className="space-y-2 max-h-[350px] overflow-y-auto pr-1">
+                  {filteredClients.length === 0 ? (
+                    <div className="text-center py-6 border-2 border-dashed rounded-2xl border-neutral-200/50">
+                      <HelpCircle className="w-8 h-8 mx-auto text-neutral-400 mb-2" />
+                      <p className="text-xs font-extrabold text-neutral-400 uppercase tracking-widest">No matching accounts</p>
+                    </div>
+                  ) : (
+                    filteredClients.map(r => (
+                      <button
+                        key={r.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedToolsClient(r.id);
+                          setAdminMessageBody(r.adminMessage || '');
+                          setAiItemPrompt('');
+                          setAiItemName('');
+                          setAiItemPrice('');
+                        }}
+                        className={`w-full text-left p-4 rounded-2xl border ${t.border} ${t.bg} hover:border-orange-500/40 hover:bg-black/5 dark:hover:bg-white/5 transition-all duration-200 flex items-center justify-between group active:scale-98`}
+                      >
+                        <div className="min-w-0 pr-4">
+                          <h4 className={`text-sm font-bold ${t.text} truncate group-hover:text-orange-500 transition-colors`}>{r.name}</h4>
+                          <p className={`text-[10px] ${t.textMuted} font-mono truncate mt-0.5`}>{r.ownerEmail}</p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md ${t.primaryLight} ${t.primary}`}>
+                            {r.businessType || 'General Store'}
+                          </span>
+                          {r.adminMessage && (
+                            <span className="w-2.5 h-2.5 bg-orange-500 rounded-full animate-bounce" title="Active announcement message posted" />
+                          )}
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Back / Dismiss Bar */}
+                <div className="flex items-center justify-between bg-black/5 dark:bg-white/5 p-2 rounded-2xl border border-transparent hover:border-orange-500/10 transition-all">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedToolsClient('')}
+                    className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white dark:bg-[#161b22] border ${t.border} text-xs font-extrabold uppercase tracking-wide ${t.text} hover:text-orange-500 hover:border-orange-500/20 shadow-sm transition-all active:scale-95`}
+                  >
+                    <ArrowLeft className="w-4 h-4 text-orange-500" /> Back to Partners
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedToolsClient('')}
+                    className={`p-2 rounded-xl bg-white dark:bg-[#161b22] border ${t.border} text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all active:scale-95`}
+                    title="Close selection"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Active Client Selection Card */}
+                <div className={`${t.primaryLight} rounded-3xl p-5 border ${t.primaryBorder} shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4`}>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md ${t.primaryBg} text-white`}>
+                        {currentClient?.businessType || 'General Store'}
+                      </span>
+                      {currentClient?.isBlocked && (
+                        <span className="text-[9px] font-black uppercase bg-red-500 text-white px-2 py-0.5 rounded-md">
+                          Blocked User
+                        </span>
+                      )}
+                    </div>
+                    <h3 className={`text-lg font-black mt-1 truncate ${t.text}`}>{currentClient?.name}</h3>
+                    <p className={`text-xs font-mono truncate opacity-80 ${t.text}`}>{currentClient?.ownerEmail}</p>
+                  </div>
+                  <button
+                    onClick={() => setSelectedToolsClient('')}
+                    className={`px-4 py-2 text-xs font-black uppercase rounded-xl bg-white dark:bg-[#161b22] shadow-sm border ${t.border} ${t.text} hover:opacity-90 transition-all shrink-0 active:scale-95`}
+                  >
+                    Change Client
+                  </button>
+                </div>
+
+                {/* Card 1: Broadcast Bulletin Message */}
+                <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm space-y-4`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Megaphone className={`h-5 w-5 ${t.primary}`} />
+                      <h3 className={`text-sm font-black uppercase tracking-wider ${t.text}`}>Admin Bulletin</h3>
+                    </div>
+                    {currentClient?.adminMessage && (
+                      <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-md">
+                        <Check className="w-3 h-3" /> Broadcast Active
+                      </span>
+                    )}
+                  </div>
+
+                  <p className={`text-[11px] ${t.textMuted} leading-relaxed`}>
+                    Alerts owners instantly. This message appears right at the top of their home dashboard and can be dismissed.
+                  </p>
+
+                  <textarea 
+                    value={adminMessageBody}
+                    onChange={(e) => setAdminMessageBody(e.target.value)}
+                    placeholder="Enter support alert, system upgrade news or custom notice..."
+                    className={`w-full rounded-2xl border ${t.border} ${t.bg} px-4 py-3 outline-none ${t.text} text-sm font-medium focus:ring-1 focus:ring-orange-500 min-h-[100px] resize-none`}
+                  />
+
+                  {/* Immediate quick templates */}
+                  <div className="space-y-1">
+                    <span className={`text-[9.5px] font-bold uppercase tracking-wider ${t.textMuted}`}>Quick Templates:</span>
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {[
+                        'Hi, please review your monthly subscription payment status.',
+                        'System maintenance scheduled tonight at 11:30 PM (15 mins downtime).',
+                        'Exciting news! We activated the new smart AI catalog models in your dashboard.',
+                        'Your catalog configuration was completed! Let us know if you need help.'
+                      ].map((tpl, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => setAdminMessageBody(tpl)}
+                          className="text-[9.5px] font-bold px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 border border-transparent hover:border-orange-500/25 text-gray-500 hover:text-orange-500 transition-all text-left truncate max-w-[280px]"
+                          title={tpl}
+                        >
+                          {tpl}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 pt-1">
+                    {currentClient?.adminMessage && (
+                      <button 
+                        onClick={async () => {
+                          if (!selectedToolsClient) return;
+                          try {
+                            await updateDoc(doc(db, 'restaurants', selectedToolsClient), { adminMessage: '' });
+                            setRestaurants(prev => prev.map(r => r.id === selectedToolsClient ? { ...r, adminMessage: '' } : r));
+                            setAdminMessageBody('');
+                            alert('Announcement cleared successfully!');
+                          } catch (e) {
+                            console.error(e);
+                          }
+                        }}
+                        className={`px-4 py-3 rounded-xl border border-red-500/20 text-red-500 font-bold text-xs hover:bg-red-500/10 transition-all uppercase tracking-widest`}
+                      >
+                        Clear Active Alert
+                      </button>
+                    )}
+                    <button 
+                      onClick={handleSendAdminMessage}
+                      disabled={sendingMessage || !adminMessageBody.trim()}
+                      className={`flex-1 ${t.primaryBg} hover:opacity-95 text-white font-black py-3 rounded-xl flex items-center justify-center gap-2 transition-transform active:scale-95 disabled:opacity-50 text-xs uppercase tracking-widest`}
+                    >
+                      {sendingMessage ? 'Sending...' : 'Publish broadcast'} <Send className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Card 2: Remote Catalog Setup */}
+                <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm space-y-4`}>
+                  <div className="flex items-center gap-2">
+                    <Sparkles className={`h-5 w-5 ${t.primary}`} />
+                    <h3 className={`text-sm font-black uppercase tracking-wider ${t.text}`}>Remote Catalog Setup</h3>
+                  </div>
+
+                  <p className={`text-[11px] ${t.textMuted} leading-relaxed`}>
+                     Draft and insert products remotely. Either write a quick AI descriptive prompt or input direct name and pricing to publish manually.
+                  </p>
+
+                  {/* High Quality Segment Toggle Controls */}
+                  <div className="flex bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5 p-1 rounded-2xl">
+                    <button 
+                      type="button"
+                      onClick={() => setActiveAddTab('ai')}
+                      className={`flex-1 py-2 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${activeAddTab === 'ai' ? 'bg-orange-500 text-white shadow-sm' : `${t.textMuted} hover:${t.primary}`}`}
+                    >
+                      AI Generator
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => setActiveAddTab('manual')}
+                      className={`flex-1 py-2 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${activeAddTab === 'manual' ? 'bg-orange-500 text-white shadow-sm' : `${t.textMuted} hover:${t.primary}`}`}
+                    >
+                      Manual entry
+                    </button>
+                  </div>
+
+                  {activeAddTab === 'ai' ? (
+                    <div className="space-y-4">
+                      <div>
+                        <textarea 
+                          value={aiItemPrompt}
+                          onChange={(e) => setAiItemPrompt(e.target.value)}
+                          placeholder="E.g. Add 3 styles of hot coffee and customized bakery cookies..."
+                          className={`w-full rounded-2xl border ${t.border} ${t.bg} px-4 py-3 outline-none ${t.text} text-sm font-medium focus:ring-1 focus:ring-orange-500 min-h-[90px] resize-none`}
+                        />
+                        {aiError && <p className="text-red-500 text-xs font-bold mt-1">{aiError}</p>}
+                      </div>
+
+                      {/* AI suggestions templates */}
+                      <div className="space-y-1">
+                        <span className={`text-[9.5px] font-bold uppercase tracking-wider ${t.textMuted}`}>Examples:</span>
+                        <div className="flex flex-wrap gap-2">
+                          {[
+                            'Crispy burgers (Aloo Tikki 99rs, Cheese Blast 179rs, Paneer supreme 199rs)',
+                            'Special iced juices (Tropical mango 120rs, Kiwi cooler 150rs, Berries 180rs)',
+                            'Classic haircut menu (Standard cut 199rs, Hair style 299rs, Shave beard 99rs)'
+                          ].map((suggest, index) => (
+                            <button
+                              key={index}
+                              type="button"
+                              onClick={() => setAiItemPrompt(`Add items: ${suggest}`)}
+                              className="text-[9.5px] font-semibold px-2.5 py-1 rounded-xl bg-black/5 dark:bg-white/5 border border-transparent hover:border-orange-500/25 text-gray-500 hover:text-orange-500 transition-all text-left truncate max-w-[280px]"
+                            >
+                              💡 {suggest}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <button 
+                        onClick={handleAIAddItem}
+                        type="button"
+                        disabled={aiGenerating || !aiItemPrompt.trim()}
+                        className={`w-full ${t.primaryBg} text-white font-black py-3 rounded-xl flex items-center justify-center gap-2 transition-transform active:scale-95 disabled:opacity-50 text-xs uppercase tracking-widest`}
+                      >
+                        {aiGenerating ? 'Generating and publishing...' : 'Run Catalog AI Engine'} <Sparkles className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="space-y-2">
+                        <input 
+                          type="text"
+                          placeholder="Item Title (e.g. Garlic Bread Sticks)"
+                          value={aiItemName}
+                          onChange={(e) => setAiItemName(e.target.value)}
+                          className={`w-full rounded-2xl border ${t.border} ${t.bg} px-4 py-3 outline-none ${t.text} text-sm font-medium focus:ring-1 focus:ring-orange-500`}
+                        />
+                        <input 
+                          type="number"
+                          placeholder="Pricing (₹ e.g. 199)"
+                          value={aiItemPrice}
+                          onChange={(e) => setAiItemPrice(e.target.value)}
+                          className={`w-full rounded-2xl border ${t.border} ${t.bg} px-4 py-3 outline-none ${t.text} text-sm font-medium focus:ring-1 focus:ring-orange-500`}
+                        />
+                      </div>
+
+                      <button 
+                        onClick={handleManualAddItem}
+                        type="button"
+                        disabled={!aiItemName.trim()}
+                        className={`w-full ${t.primaryBg} text-white font-black py-3 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 text-xs uppercase tracking-widest`}
+                      >
+                        <PlusCircle className="w-4 h-4" /> Write to catalog
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      }
+
       case 'settings':
         return (
           <div className="space-y-4 p-4 pb-24 flex flex-col h-full justify-center text-center max-w-sm mx-auto">
@@ -559,6 +973,7 @@ export default function CeoDashboard() {
             { id: 'home', icon: Home, label: 'Home' },
             { id: 'charts', icon: BarChart2, label: 'Charts' },
             { id: 'clients', icon: Users, label: 'Clients' },
+            { id: 'tools', icon: Wrench, label: 'Tools' },
             { id: 'settings', icon: Settings, label: 'Settings' }
           ].map((tab) => {
             const Icon = tab.icon;

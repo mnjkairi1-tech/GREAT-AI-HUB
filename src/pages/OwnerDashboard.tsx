@@ -77,7 +77,8 @@ import {
   Zap,
   Star,
   Moon,
-  Layers
+  Layers,
+  AlertCircle
 } from 'lucide-react';
 import { THEMES, getTheme, applyTheme } from '../themes';
 import { cn, formatCurrency, handleFirestoreError, OperationType } from '../lib/utils';
@@ -965,6 +966,34 @@ export default function OwnerDashboard() {
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto p-4 pb-24 md:p-10 md:pb-10">
         <div className="mx-auto w-full max-w-4xl">
+          {restaurant.adminMessage && (
+            <motion.div 
+              initial={{ opacity: 0, y: -20 }} 
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-6 rounded-2xl bg-orange-50 border border-orange-200 p-4 flex items-start gap-4 shadow-sm"
+            >
+              <div className="bg-orange-100 p-2 rounded-full text-orange-600 mt-0.5">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <div className="flex-1">
+                <h4 className="text-orange-900 font-bold text-sm mb-1 uppercase tracking-wider">Platform Announcement</h4>
+                <p className="text-orange-800 text-sm">{restaurant.adminMessage}</p>
+              </div>
+              <button 
+                onClick={async () => {
+                  try {
+                    await updateDoc(doc(db, 'restaurants', restaurant.id), { adminMessage: '' });
+                    setRestaurant({ ...restaurant, adminMessage: '' });
+                  } catch(e) { /* ignore silently */ }
+                }}
+                className="text-orange-400 hover:text-orange-600 transition-colors p-1"
+                title="Dismiss"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </motion.div>
+          )}
+
           <div className="mb-6 md:hidden">
             <select 
               value={restaurant.id}

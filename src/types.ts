@@ -26,6 +26,7 @@ export interface Restaurant {
   staffMembers?: StaffMember[];
   shops?: string[];
   requestAccessEmails?: string[];
+  adminMessage?: string;
   theme?: 'classic-orange' | 'modern-slate' | 'ultra-cute' | 'neon-tech' | 'sunset-luxury';
   createdAt: any;
 }

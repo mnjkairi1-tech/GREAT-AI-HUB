@@ -3,7 +3,7 @@ import { db, auth } from '../lib/firebase';
 import { collection, getDocs, updateDoc, doc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { useNavigate } from 'react-router-dom';
-import { Shield, Users, LogOut, DollarSign, Activity, AlertCircle, Home, BarChart2, Settings, Power, Edit2, CheckCircle2, Palette } from 'lucide-react';
+import { Shield, Users, LogOut, DollarSign, Activity, AlertCircle, Home, BarChart2, Settings, Power, Edit2, CheckCircle2, Palette, History } from 'lucide-react';
 import { startOfMonth, endOfMonth, isWithinInterval, startOfYear, endOfYear, format } from 'date-fns';
 import { Restaurant } from '../types';
 import SleekLoader from '../components/SleekLoader';
@@ -51,6 +51,17 @@ export default function CeoDashboard() {
   // For editing fee
   const [editingFeeId, setEditingFeeId] = useState<string | null>(null);
   const [tempFee, setTempFee] = useState<string>('');
+  const [clientTab, setClientTab] = useState<'basic' | 'standard' | 'pro'>('standard');
+  const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
+
+  const getLatestPaymentDate = (restId: string) => {
+    const restPayments = payments.filter(p => p.restaurantId === restId);
+    if (restPayments.length === 0) return 0;
+    return Math.max(...restPayments.map(p => {
+      if (!p.createdAt) return 0;
+      return p.createdAt.seconds ? p.createdAt.seconds * 1000 : new Date(p.createdAt).getTime();
+    }));
+  };
 
   // Theme support
   const [themeId, setThemeId] = useState<string>(() => localStorage.getItem('ceoTheme') || 'dark');
@@ -262,21 +273,55 @@ export default function CeoDashboard() {
           </div>
         );
 
-      case 'clients':
+      case 'clients': {
+        const basicRests = restaurants.filter(r => (r.subscriptionFee || 1000) <= 500);
+        const standardRests = restaurants.filter(r => {
+          const fee = (r.subscriptionFee || 1000);
+          return fee > 500 && fee <= 1000;
+        });
+        const proRests = restaurants.filter(r => (r.subscriptionFee || 1000) > 1000);
+
+        let activeRests: Restaurant[] = [];
+        if (clientTab === 'basic') activeRests = basicRests;
+        else if (clientTab === 'standard') activeRests = standardRests;
+        else if (clientTab === 'pro') activeRests = proRests;
+
+        // Sort by older payments first
+        activeRests.sort((a, b) => getLatestPaymentDate(a.id) - getLatestPaymentDate(b.id));
+
         return (
           <div className="space-y-4 p-4 pb-24">
-            <h2 className={`text-xl font-black mb-6 ${t.text}`}>Service Users</h2>
+            <h2 className={`text-xl font-black mb-4 ${t.text}`}>Service Users</h2>
+            
+            <div className={`flex w-full p-1 rounded-2xl mb-6 ${t.card} border ${t.border}`}>
+              {(['basic', 'standard', 'pro'] as const).map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => setClientTab(tab)}
+                  className={`flex-1 py-2 text-xs font-bold uppercase tracking-widest rounded-xl transition-all ${
+                    clientTab === tab 
+                      ? `${t.primaryBg} text-white shadow-sm` 
+                      : `${t.textMuted} hover:${t.primary}`
+                  }`}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+
             {restaurants.length === 0 ? (
               <p className={`text-center font-medium py-10 ${t.textMuted}`}>No active businesses yet.</p>
+            ) : activeRests.length === 0 ? (
+              <p className={`text-center font-medium py-10 ${t.textMuted}`}>No users in this category.</p>
             ) : (
               <div className="space-y-4">
-                {restaurants.map(rest => {
+                {activeRests.map(rest => {
                   const isPaid = hasPaidThisMonth(rest.id);
                   const fee = rest.subscriptionFee || 1000;
                   const isEditing = editingFeeId === rest.id;
 
                   return (
-                    <div key={rest.id} className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm`}>
+                    <div key={rest.id} className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm transition-all`}>
                       <div className="flex items-start justify-between mb-4">
                         <div>
                           <h4 className={`font-bold text-base ${t.text}`}>{rest.name}</h4>
@@ -287,7 +332,7 @@ export default function CeoDashboard() {
                           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider transition-all ${
                             rest.isBlocked 
                               ? 'bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-emerald-500/10 hover:text-emerald-500 hover:border-emerald-500/20' 
-                              : `bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/20`
+                              : 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/20'
                           }`}
                         >
                           <Power className="h-3 w-3" />
@@ -318,19 +363,55 @@ export default function CeoDashboard() {
                           </div>
                         )}
 
-                        {!isPaid ? (
-                          <button 
-                            onClick={() => markPaid(rest)}
-                            className={`${t.primaryBg} text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm transition-colors opacity-90 hover:opacity-100`}
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setExpandedHistoryId(expandedHistoryId === rest.id ? null : rest.id)}
+                            className={`p-1.5 rounded-full hover:${t.primaryLight} ${t.textMuted} transition-colors`}
                           >
-                            Mark Paid
+                            <History className="h-4 w-4" />
                           </button>
-                        ) : (
-                          <span className={`flex items-center gap-1 ${t.primary} ${t.primaryLight} px-3 py-1.5 rounded-xl text-xs font-bold border ${t.primaryBorder} cursor-default`}>
-                            <CheckCircle2 className="h-4 w-4" /> Paid Monthly
-                          </span>
-                        )}
+
+                          {!isPaid ? (
+                            <button 
+                              onClick={() => markPaid(rest)}
+                              className={`${t.primaryBg} text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm transition-colors opacity-90 hover:opacity-100 flex items-center gap-1`}
+                            >
+                              Mark Paid
+                            </button>
+                          ) : (
+                            <span className={`flex items-center gap-1 ${t.primary} ${t.primaryLight} px-3 py-1.5 rounded-xl text-xs font-bold border ${t.primaryBorder} cursor-default`}>
+                              <CheckCircle2 className="h-4 w-4" /> Paid Monthly
+                            </span>
+                          )}
+                        </div>
                       </div>
+
+                      {expandedHistoryId === rest.id && (
+                        <div className={`mt-4 p-3 rounded-2xl ${t.bg} border ${t.border}`}>
+                          <h5 className={`text-[10px] font-black uppercase tracking-widest ${t.textMuted} mb-2`}>Payment History</h5>
+                          {payments.filter(p => p.restaurantId === rest.id).length === 0 ? (
+                            <p className={`text-xs font-medium ${t.textMuted}`}>No payments recorded yet.</p>
+                          ) : (
+                            <div className="space-y-2">
+                              {payments
+                                .filter(p => p.restaurantId === rest.id)
+                                .sort((a, b) => {
+                                  const aT = a.createdAt?.seconds ? a.createdAt.seconds * 1000 : new Date(a.createdAt || 0).getTime();
+                                  const bT = b.createdAt?.seconds ? b.createdAt.seconds * 1000 : new Date(b.createdAt || 0).getTime();
+                                  return bT - aT;
+                                })
+                                .map(p => (
+                                  <div key={p.id} className="flex items-center justify-between text-xs">
+                                    <span className={`font-medium ${t.text}`}>
+                                      {p.createdAt ? format(p.createdAt.seconds ? p.createdAt.seconds * 1000 : new Date(p.createdAt), 'MMM d, yyyy • h:mm a') : 'Unknown Date'}
+                                    </span>
+                                    <span className={`font-bold ${t.primary}`}>₹{p.amount}</span>
+                                  </div>
+                                ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -338,6 +419,7 @@ export default function CeoDashboard() {
             )}
           </div>
         );
+      }
 
       case 'settings':
         return (
@@ -385,9 +467,9 @@ export default function CeoDashboard() {
     <div className={`min-h-screen ${t.bg} ${t.text} font-sans flex flex-col transition-colors duration-300`}>
       {/* Top Header */}
       <header className={`${t.bg}/80 backdrop-blur-md px-6 py-4 sticky top-0 z-40 border-b ${t.border}`}>
-        <h1 className={`text-lg font-black tracking-widest uppercase flex items-center justify-center gap-2 ${t.text}`}>
-          <Shield className={`h-5 w-5 ${t.primary}`} /> CEO Dashboard
-        </h1>
+        <div className={`flex items-center justify-center gap-2 ${t.text}`}>
+          <Shield className={`h-6 w-6 ${t.primary}`} />
+        </div>
       </header>
 
       {/* Main Panel Content */}

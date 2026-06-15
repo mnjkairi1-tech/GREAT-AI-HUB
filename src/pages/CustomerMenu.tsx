@@ -95,7 +95,9 @@ export default function CustomerMenu() {
         ]);
         
         if (rDoc.exists()) {
-          setRestaurant({ id: rDoc.id, ...rDoc.data() } as Restaurant);
+          const rData = { id: rDoc.id, ...rDoc.data() } as Restaurant;
+          setRestaurant(rData);
+          if (rData.businessType) localStorage.setItem(`business_type_${restaurantId}`, rData.businessType);
         }
         
         if (!qrSnap.empty) {
@@ -151,7 +153,7 @@ export default function CustomerMenu() {
   }, [orderSent?.id]);
 
   if (loading) return (
-    <SleekLoader message="Loading Menu..." />
+    <SleekLoader message="Loading Menu..." businessType={restaurantId ? (localStorage.getItem(`business_type_${restaurantId}`) || undefined) : undefined} />
   );
 
   if (!restaurant) return (

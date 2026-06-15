@@ -768,6 +768,9 @@ export default function OwnerDashboard() {
             // Default to first restaurant
             const first = loadedRestaurants[0];
             setRestaurant(first);
+            if (first.businessType) {
+              localStorage.setItem('owner_last_business_type', first.businessType);
+            }
             // Check if user is staff for the first restaurant
             const isActuallyStaff = !snapOwner.docs.find(d => d.id === first.id);
             setIsStaff(isActuallyStaff);
@@ -797,6 +800,9 @@ export default function OwnerDashboard() {
     const selected = allRestaurants.find(r => r.id === resId);
     if (selected) {
       setRestaurant(selected);
+      if (selected.businessType) {
+        localStorage.setItem('owner_last_business_type', selected.businessType);
+      }
       // If user is owner, they are not staff for this one unless they only exist in snapStaff.
       // (A simplified check: if their uid matches the ownerId, they are not staff)
       setIsStaff(selected.ownerId !== auth.currentUser?.uid);
@@ -805,7 +811,10 @@ export default function OwnerDashboard() {
   };
 
   if (loading || !restaurant) return (
-    <SleekLoader message="Opening Dashboard..." />
+    <SleekLoader 
+      message="Opening Dashboard..." 
+      businessType={localStorage.getItem('owner_last_business_type') || undefined} 
+    />
   );
 
   if (restaurant.isBlocked) {

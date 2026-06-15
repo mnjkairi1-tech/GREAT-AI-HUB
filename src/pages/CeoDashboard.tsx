@@ -244,30 +244,42 @@ export default function CeoDashboard() {
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'home':
+      case 'home': {
+        const paidThisMonthCount = restaurants.filter(r => hasPaidThisMonth(r.id)).length;
+        
         return (
           <div className="space-y-4 p-4 pb-24">
             <h2 className={`text-xl font-black mb-6 ${t.text}`}>Overview</h2>
-            <div className={`${t.card} rounded-3xl p-6 border ${t.border} shadow-sm`}>
-               <p className={`text-sm font-bold tracking-wider uppercase mb-2 ${t.textMuted}`}>Platform Revenue</p>
-               <h3 className={`text-4xl font-black ${t.text}`}>₹{totalEarnings.toLocaleString()}</h3>
-               <p className={`text-xs font-medium mt-2 ${t.textMuted}`}>All-time collected subscription fees</p>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm`}>
+                <p className={`text-[10px] font-bold tracking-wider uppercase mb-2 ${t.textMuted}`}>Platform Revenue</p>
+                <h3 className={`text-2xl font-black ${t.text}`}>₹{totalEarnings.toLocaleString()}</h3>
+                <p className={`text-[10px] font-medium mt-1 ${t.textMuted}`}>All-time collected</p>
+              </div>
+
+              <div className={`${t.primaryLight} rounded-3xl p-5 border ${t.primaryBorder} shadow-sm`}>
+                <p className={`text-[10px] font-bold tracking-wider uppercase mb-2 ${t.primary}`}>Monthly Revenue</p>
+                <h3 className={`text-2xl font-black ${t.primary}`}>₹{monthlyEarnings.toLocaleString()}</h3>
+                <p className={`text-[10px] font-medium mt-1 ${t.primary} opacity-80`}>This month</p>
+              </div>
             </div>
             
             <div className="grid grid-cols-2 gap-4">
               <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm`}>
                 <Users className={`h-6 w-6 mb-3 ${t.primary}`} />
-                <h4 className={`text-3xl font-black ${t.text}`}>{restaurants.length}</h4>
+                <h4 className={`text-2xl font-black ${t.text}`}>{restaurants.length}</h4>
                 <p className={`text-xs font-semibold uppercase tracking-widest mt-1 ${t.textMuted}`}>Active Users</p>
               </div>
               <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm`}>
-                <Activity className={`h-6 w-6 mb-3 ${t.primary}`} />
-                <h4 className={`text-3xl font-black ${t.text}`}>{payments.length}</h4>
-                <p className={`text-xs font-semibold uppercase tracking-widest mt-1 ${t.textMuted}`}>Total Payments</p>
+                <CheckCircle2 className={`h-6 w-6 mb-3 ${t.primary}`} />
+                <h4 className={`text-2xl font-black ${t.text}`}>{paidThisMonthCount} <span className={`text-sm ${t.textMuted}`}>/ {restaurants.length}</span></h4>
+                <p className={`text-[10px] font-semibold uppercase tracking-widest mt-1 ${t.textMuted}`}>Paid This Month</p>
               </div>
             </div>
           </div>
         );
+      }
       
       case 'charts':
         return (

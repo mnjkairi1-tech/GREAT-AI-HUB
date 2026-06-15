@@ -152,33 +152,6 @@ export default function CustomerMenu() {
     return unsub;
   }, [orderSent?.id]);
 
-  if (loading) return (
-    <SleekLoader message="Loading Menu..." businessType={restaurantId ? (localStorage.getItem(`business_type_${restaurantId}`) || undefined) : undefined} />
-  );
-
-  if (!restaurant) return (
-    <div className="flex min-h-screen items-center justify-center bg-neutral-50 px-4 text-center">
-      <div className="max-w-md w-full bg-white p-8 rounded-[32px] border border-neutral-100 shadow-xl">
-        <h2 className="mb-2 text-2xl font-black text-neutral-900">Store Not Found</h2>
-        <p className="text-neutral-500 font-medium">The QR code might be invalid or the store is inactive.</p>
-      </div>
-    </div>
-  );
-
-  if (restaurant.isBlocked) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-neutral-50 px-4 text-center">
-        <div className="max-w-md w-full bg-white p-8 rounded-[32px] border border-red-100 shadow-xl">
-          <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
-            <AlertTriangle className="h-8 w-8" />
-          </div>
-          <h2 className="mb-2 text-2xl font-black text-neutral-900">Service Suspended</h2>
-          <p className="text-neutral-500 font-medium">This service is temporarily suspended by the platform administrator. Online ordering is currently disabled.</p>
-        </div>
-      </div>
-    );
-  }
-
   const availableMenuItems = useMemo(() => {
     return menuItems.filter(i => {
       // If manually disabled / hidden by owner, hide it
@@ -330,6 +303,33 @@ export default function CustomerMenu() {
       setLoading(false);
     }
   };
+
+  if (loading) return (
+    <SleekLoader message="Loading Menu..." businessType={restaurantId ? (localStorage.getItem(`business_type_${restaurantId}`) || undefined) : undefined} />
+  );
+
+  if (!restaurant) return (
+    <div className="flex min-h-screen items-center justify-center bg-neutral-50 px-4 text-center">
+      <div className="max-w-md w-full bg-white p-8 rounded-[32px] border border-neutral-100 shadow-xl">
+        <h2 className="mb-2 text-2xl font-black text-neutral-900">Store Not Found</h2>
+        <p className="text-neutral-500 font-medium">The QR code might be invalid or the store is inactive.</p>
+      </div>
+    </div>
+  );
+
+  if (restaurant.isBlocked) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-neutral-50 px-4 text-center">
+        <div className="max-w-md w-full bg-white p-8 rounded-[32px] border border-red-100 shadow-xl">
+          <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
+            <AlertTriangle className="h-8 w-8" />
+          </div>
+          <h2 className="mb-2 text-2xl font-black text-neutral-900">Service Suspended</h2>
+          <p className="text-neutral-500 font-medium">This service is temporarily suspended by the platform administrator. Online ordering is currently disabled.</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!restaurant) return <div>Restaurant not found</div>;
 

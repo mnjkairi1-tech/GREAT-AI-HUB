@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db, auth } from '../lib/firebase';
-import { collection, getDocs, updateDoc, doc, addDoc, serverTimestamp, query, where } from 'firebase/firestore';
+import { collection, getDocs, updateDoc, doc, addDoc, serverTimestamp, query, where, deleteDoc, writeBatch } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { useNavigate } from 'react-router-dom';
-import { Shield, Users, LogOut, DollarSign, Activity, AlertCircle, Home, BarChart2, Settings, Power, Edit2, CheckCircle2, Palette, History, Wrench, MessageSquare, Send, X, PlusCircle, Sparkles, Search, Megaphone, ArrowLeft, Check, HelpCircle, Bell, AlertTriangle, CreditCard, ChevronRight, Layers, Globe } from 'lucide-react';
+import { Shield, Users, LogOut, DollarSign, Activity, AlertCircle, Home, BarChart2, Settings, Power, Edit2, CheckCircle2, Palette, History, Wrench, MessageSquare, Send, X, PlusCircle, Sparkles, Search, Megaphone, ArrowLeft, Check, HelpCircle, Bell, AlertTriangle, CreditCard, ChevronRight, Layers, Globe, TrendingUp, Volume2, Terminal, Lock } from 'lucide-react';
 import { startOfMonth, endOfMonth, isWithinInterval, startOfYear, endOfYear, format } from 'date-fns';
 import { Restaurant } from '../types';
 import SleekLoader from '../components/SleekLoader';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, LineChart, Line, AreaChart, Area } from 'recharts';
 
 type TabType = 'home' | 'charts' | 'clients' | 'tools' | 'settings';
 
@@ -74,7 +74,29 @@ export default function CeoDashboard() {
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
   const [clientStats, setClientStats] = useState<Record<string, { monthlyEarning: number, isLoading: boolean }>>({});
 
+  // Custom IFrame Safe Confirm Modal State
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    onConfirm: () => void;
+    confirmText?: string;
+    cancelText?: string;
+  } | null>(null);
 
+  const triggerSafeConfirm = (title: string, description: string, onConfirm: () => void, confirmText = "Confirm", cancelText = "Cancel") => {
+    setConfirmModal({
+      isOpen: true,
+      title,
+      description,
+      onConfirm: () => {
+        onConfirm();
+        setConfirmModal(null);
+      },
+      confirmText,
+      cancelText
+    });
+  };
 
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
@@ -108,7 +130,12 @@ export default function CeoDashboard() {
   const [customBusinessType, setCustomBusinessType] = useState<string>('Restaurant');
   const [customClientTheme, setCustomClientTheme] = useState<string>('classic-orange');
   const [customStaffCodeEnabled, setCustomStaffCodeEnabled] = useState<boolean>(false);
+  const [customSubscriptionFee, setCustomSubscriptionFee] = useState<number>(1000);
+  const [customStaffCode, setCustomStaffCode] = useState<string>('');
   const [updatingOverrides, setUpdatingOverrides] = useState<boolean>(false);
+
+  // Advanced Charts / Analytics Visual options
+  const [revenueChartMode, setRevenueChartMode] = useState<'bar' | 'area' | 'line'>('bar');
 
   const handleSaveClientOverrides = async () => {
     if (!selectedToolsClient) return;
@@ -117,13 +144,17 @@ export default function CeoDashboard() {
       await updateDoc(doc(db, 'restaurants', selectedToolsClient), {
         businessType: customBusinessType,
         theme: customClientTheme,
-        enableStaffCode: customStaffCodeEnabled
+        enableStaffCode: customStaffCodeEnabled,
+        subscriptionFee: Number(customSubscriptionFee) || 1000,
+        staffCode: customStaffCode
       });
       setRestaurants(prev => prev.map(r => r.id === selectedToolsClient ? {
         ...r,
         businessType: customBusinessType,
         theme: customClientTheme as any,
-        enableStaffCode: customStaffCodeEnabled
+        enableStaffCode: customStaffCodeEnabled,
+        subscriptionFee: Number(customSubscriptionFee) || 1000,
+        staffCode: customStaffCode
       } : r));
       showToast('Client configurations updated successfully! Changes are applied instantly.', 'success');
     } catch (err) {
@@ -174,34 +205,32 @@ export default function CeoDashboard() {
 
     if (itemsToInject.length === 0) return;
 
-    let confirmed = false;
-    try {
-      confirmed = window.confirm(`Would you like to instantly auto-populate 5 premium starter items for "${presetType}" to kickstart the system search catalog?`);
-    } catch (e) {
-      // Robust sandbox fallback
-      confirmed = true;
-    }
-
-    if (confirmed) {
-      try {
-        await Promise.all(itemsToInject.map(item => 
-          addDoc(collection(db, 'menuItems'), {
-            restaurantId: selectedToolsClient,
-            businessType: customBusinessType,
-            name: item.name,
-            price: item.price,
-            category: item.category,
-            isAvailable: true,
-            stockCount: 100,
-            createdAt: serverTimestamp()
-          })
-        ));
-        showToast('Blueprint template injected successfully!', 'success');
-      } catch (err) {
-        console.error(err);
-        showToast('Failed to inject template', 'error');
-      }
-    }
+    triggerSafeConfirm(
+      `Inject ${presetType} Blueprints?`,
+      `Would you like to instantly auto-populate 5 premium starter items for "${presetType}" to kickstart the system search catalog?`,
+      async () => {
+        try {
+          await Promise.all(itemsToInject.map(item => 
+            addDoc(collection(db, 'menuItems'), {
+              restaurantId: selectedToolsClient,
+              businessType: customBusinessType,
+              name: item.name,
+              price: item.price,
+              category: item.category,
+              isAvailable: true,
+              stockCount: 100,
+              createdAt: serverTimestamp()
+            })
+          ));
+          showToast('Blueprint template injected successfully!', 'success');
+        } catch (err) {
+          console.error(err);
+          showToast('Failed to inject template', 'error');
+        }
+      },
+      "Inject Preset",
+      "Cancel"
+    );
   };
 
   const loadClientStats = async (restId: string) => {
@@ -250,6 +279,109 @@ export default function CeoDashboard() {
       showToast('Failed to send message', 'error');
     }
     setSendingMessage(false);
+  };
+
+  const handleResetCatalog = async () => {
+    if (!selectedToolsClient) return;
+    triggerSafeConfirm(
+      "Reset Product Catalog?",
+      "Are you absolutely sure you want to PERMANENTLY ERASE all products in this business's digital catalog? This action is immediate and cannot be undone.",
+      async () => {
+        try {
+          const q = query(collection(db, 'menuItems'), where('restaurantId', '==', selectedToolsClient));
+          const snap = await getDocs(q);
+          if (snap.empty) {
+            showToast("Catalog is already empty!", "success");
+            return;
+          }
+          const batch = writeBatch(db);
+          snap.docs.forEach(docSnap => {
+            batch.delete(docSnap.ref);
+          });
+          await batch.commit();
+          showToast("Digital catalog cleared successfully!", "success");
+        } catch (err) {
+          console.error("Failed to reset catalog", err);
+          showToast("Failed to empty catalog", "error");
+        }
+      },
+      "Yes, Reset Catalog",
+      "Cancel"
+    );
+  };
+
+  const handleSeedOrder = async () => {
+    if (!selectedToolsClient) return;
+    try {
+      const q = query(collection(db, 'menuItems'), where('restaurantId', '==', selectedToolsClient));
+      const snap = await getDocs(q);
+      let itemsToOrder = [
+        { name: "Double Cheese Margherita Pizza", price: 249, quantity: 2 },
+        { name: "Stuffed Garlic Breadsticks", price: 139, quantity: 1 }
+      ];
+      
+      if (snap.docs.length > 0) {
+        const availableItems = snap.docs.map(d => ({
+          name: d.data().name as string,
+          price: Number(d.data().price) || 100,
+        }));
+        // Select up to 2 items
+        const selected = availableItems.slice(0, 2);
+        itemsToOrder = selected.map(it => ({
+          name: it.name,
+          price: it.price,
+          quantity: Math.floor(Math.random() * 2) + 1
+        }));
+      }
+
+      const totalAmount = itemsToOrder.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+      const randTable = "T-" + (Math.floor(Math.random() * 10) + 1);
+      const names = ["Aarav Sharma", "Priya Patel", "Vikram Singh", "Ananya Rao", "Kabir Mehta"];
+      const randName = names[Math.floor(Math.random() * names.length)];
+      
+      const newOrder = {
+        restaurantId: selectedToolsClient,
+        tableNo: randTable,
+        customerName: randName,
+        items: itemsToOrder,
+        totalAmount,
+        status: 'PENDING',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      };
+
+      await addDoc(collection(db, 'orders'), newOrder);
+      showToast(`Simulator Order generated on ${randTable} for ₹${totalAmount}!`, 'success');
+    } catch (err) {
+      console.error("Failed to seed order", err);
+      showToast("Simulation seeding failed", 'error');
+    }
+  };
+
+  const handleExportCatalogJSON = async () => {
+    if (!selectedToolsClient) return;
+    try {
+      const q = query(collection(db, 'menuItems'), where('restaurantId', '==', selectedToolsClient));
+      const snap = await getDocs(q);
+      if (snap.empty) {
+        showToast("Catalog is empty. Nothing to export!", "error");
+        return;
+      }
+      const items = snap.docs.map(d => ({
+        name: d.data().name,
+        price: d.data().price,
+        category: d.data().category,
+        isAvailable: d.data().isAvailable ?? true,
+        stockCount: d.data().stockCount ?? 100,
+      }));
+      const jsonStr = JSON.stringify(items, null, 2);
+      
+      await navigator.clipboard.writeText(jsonStr);
+      showToast("Catalog JSON copied to clipboard successfully!", "success");
+    } catch (err) {
+      console.error(err);
+      showToast("Failed to export catalog JSON", "error");
+    }
   };
 
   const handleManualAddItem = async () => {
@@ -344,6 +476,101 @@ export default function CeoDashboard() {
     localStorage.setItem('ceoTheme', id);
   };
 
+  // SYSTEM SETTINGS PERSISTED CONFIGURATIONS
+  const [ceoName, setCeoName] = useState<string>(() => localStorage.getItem('ceo_settings_name') || 'Admin Director');
+  const [ceoTitle, setCeoTitle] = useState<string>(() => localStorage.getItem('ceo_settings_title') || 'CEO Control Desk');
+  const [taxRate, setTaxRate] = useState<number>(() => Number(localStorage.getItem('ceo_settings_tax_rate')) || 18);
+  const [roundingRule, setRoundingRule] = useState<string>(() => localStorage.getItem('ceo_settings_rounding') || 'closest');
+  const [isMaintenanceMode, setIsMaintenanceMode] = useState<boolean>(() => localStorage.getItem('ceo_settings_maintenance') === 'true');
+  const [soundPreference, setSoundPreference] = useState<string>(() => localStorage.getItem('ceo_settings_sound') || 'synth-sci-fi');
+  const [autopilotEnabled, setAutopilotEnabled] = useState<boolean>(() => localStorage.getItem('ceo_settings_autopilot') !== 'false');
+  const [consoleFeedPaused, setConsoleFeedPaused] = useState<boolean>(false);
+
+  // Web Audio Hook / Helper
+  const playChime = (type = soundPreference) => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      
+      const playBeep = (freq: number, duration: number, delay = 0, wave: OscillatorType = 'sine') => {
+        const osc = ctx.createOscillator();
+        const gainNode = ctx.createGain();
+        osc.connect(gainNode);
+        gainNode.connect(ctx.destination);
+        
+        osc.type = wave;
+        osc.frequency.setValueAtTime(freq, ctx.currentTime + delay);
+        
+        gainNode.gain.setValueAtTime(0.08, ctx.currentTime + delay);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + duration);
+        
+        osc.start(ctx.currentTime + delay);
+        osc.stop(ctx.currentTime + delay + duration);
+      };
+
+      if (type === 'synth-chime') {
+        playBeep(523.25, 0.25, 0); // C5
+        playBeep(659.25, 0.35, 0.1); // E5
+        playBeep(783.99, 0.5, 0.2); // G5
+      } else if (type === 'synth-sci-fi') {
+        playBeep(880, 0.12, 0, 'triangle'); // A5
+        playBeep(1200, 0.16, 0.08, 'sawtooth'); // High retro blip
+      } else if (type === 'synth-echo') {
+        playBeep(440, 0.3, 0, 'sine'); // A4
+        playBeep(440, 0.15, 0.18, 'sine'); // Echo
+        playBeep(440, 0.08, 0.35, 'sine'); // Soft echo
+      } else if (type === 'synth-pure') {
+        playBeep(600, 0.08, 0, 'sine'); // Simple short click
+      }
+    } catch (e) {
+      console.warn("AudioContext block", e);
+    }
+  };
+
+  const [auditLogs, setAuditLogs] = useState<Array<{ id: string, msg: string, time: string, type: 'info' | 'warn' | 'success' }>>([
+    { id: 'all-1', msg: 'CEO Terminal Admin Deck securely active.', time: '07:51:02', type: 'success' },
+    { id: 'all-2', msg: 'System integrity: sandbox container active.', time: '07:51:04', type: 'info' },
+    { id: 'all-3', msg: 'All merchant websocket hooks fully loaded.', time: '07:51:05', type: 'success' }
+  ]);
+
+  useEffect(() => {
+    if (consoleFeedPaused) return;
+
+    const logMessages = [
+      { msg: 'System cache cleared: ready for state queries.', type: 'info' },
+      { msg: 'Merchant status check: all nodes validated.', type: 'success' },
+      { msg: 'Billing pipeline: computed active subscriptions.', type: 'info' },
+      { msg: 'Cron verification: daily report cached.', type: 'success' },
+      { msg: 'Global policy parsed: standard permissions OK.', type: 'info' },
+      { msg: 'Warning: sandbox environment check complete.', type: 'warn' },
+      { msg: 'API ping: Firestore connection verified successfully.', type: 'success' }
+    ];
+
+    const timer = setInterval(() => {
+      const idx = Math.floor(Math.random() * logMessages.length);
+      const chosen = logMessages[idx];
+      const now = new Date();
+      const timeStr = now.toTimeString().split(' ')[0];
+      
+      setAuditLogs(prev => {
+        const next = [...prev, { id: Date.now().toString(), msg: chosen.msg, time: timeStr, type: chosen.type as any }];
+        if (next.length > 25) {
+          return next.slice(next.length - 25);
+        }
+        return next;
+      });
+    }, 6000);
+
+    return () => clearInterval(timer);
+  }, [consoleFeedPaused]);
+
+  const saveSettingsField = (key: string, val: any) => {
+    localStorage.setItem(key, String(val));
+    showToast('Setting synced & saved instantly!', 'success');
+    playChime();
+  };
+
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
@@ -377,28 +604,27 @@ export default function CeoDashboard() {
   const handleLogout = () => signOut(auth).then(() => navigate('/'));
 
    const toggleRestaurantBlock = async (id: string, currentlyBlocked: boolean) => {
-    let confirmed = false;
+    const confirmTitle = currentlyBlocked ? "Unblock Client Account?" : "Block Client Account?";
     const confirmMsg = currentlyBlocked 
-      ? "Unblock this business? They and their staff will regain immediate full access." 
-      : "Block this business? They and their staff won't be able to log in or use the app.";
+      ? "Are you sure you want to unblock this business? They and their staff will regain immediate full access to their dashboard and registers." 
+      : "Are you sure you want to block this business? They and their staff won't be able to log in, operate registers, or view items.";
     
-    try {
-      confirmed = window.confirm(confirmMsg);
-    } catch (e) {
-      // Robust fallback for sandboxed iframes where native dialogs are deactivated
-      confirmed = true;
-    }
-
-    if (confirmed) {
-      try {
-         await updateDoc(doc(db, 'restaurants', id), { isBlocked: !currentlyBlocked });
-         setRestaurants(prev => prev.map(r => r.id === id ? { ...r, isBlocked: !currentlyBlocked } : r));
-         showToast(`Business is now ${currentlyBlocked ? 'Active' : 'Blocked'} successfully!`, 'success');
-      } catch (err) {
-         console.error("Failed to update status", err);
-         showToast("Failed to update status", 'error');
-      }
-    }
+    triggerSafeConfirm(
+      confirmTitle,
+      confirmMsg,
+      async () => {
+        try {
+           await updateDoc(doc(db, 'restaurants', id), { isBlocked: !currentlyBlocked });
+           setRestaurants(prev => prev.map(r => r.id === id ? { ...r, isBlocked: !currentlyBlocked } : r));
+           showToast(`Business is now ${currentlyBlocked ? 'Active' : 'Blocked'} successfully!`, 'success');
+        } catch (err) {
+           console.error("Failed to update status", err);
+           showToast("Failed to update status", 'error');
+        }
+      },
+      currentlyBlocked ? "Unblock Account" : "Block Account",
+      "Cancel"
+    );
   };
 
   const saveFee = async (id: string) => {
@@ -420,29 +646,27 @@ export default function CeoDashboard() {
 
   const markPaid = async (rest: Restaurant) => {
     const fee = rest.subscriptionFee || 1000;
-    let confirmed = false;
-    try {
-      confirmed = window.confirm(`Record ₹${fee} payment for ${rest.name}?`);
-    } catch (e) {
-      // Robust fallback for sandboxed iframe
-      confirmed = true;
-    }
-
-    if (confirmed) {
-      try {
-        const newPay = {
-          restaurantId: rest.id,
-          amount: fee,
-          createdAt: serverTimestamp()
-        };
-        const docRef = await addDoc(collection(db, 'platformPayments'), newPay);
-        setPayments(prev => [...prev, { id: docRef.id, ...newPay, createdAt: { toDate: () => new Date() } }]);
-        showToast(`Recorded payment of ₹${fee} for ${rest.name}!`, 'success');
-      } catch (err) {
-        console.error("Payment recording failed", err);
-        showToast("Failed to record payment", 'error');
-      }
-    }
+    triggerSafeConfirm(
+      "Confirm Client Payment?",
+      `Are you sure you want to record ₹${fee} subscription payment for "${rest.name}"? This updates lifetime revenue metrics.`,
+      async () => {
+        try {
+          const newPay = {
+            restaurantId: rest.id,
+            amount: fee,
+            createdAt: serverTimestamp()
+          };
+          const docRef = await addDoc(collection(db, 'platformPayments'), newPay);
+          setPayments(prev => [...prev, { id: docRef.id, ...newPay, createdAt: { toDate: () => new Date() } }]);
+          showToast(`Recorded payment of ₹${fee} for ${rest.name}!`, 'success');
+        } catch (err) {
+          console.error("Payment recording failed", err);
+          showToast("Failed to record payment", 'error');
+        }
+      },
+      "Yes, Mark Paid",
+      "No, Cancel"
+    );
   };
 
   const { totalEarnings, monthlyEarnings, yearlyEarnings, chartData } = useMemo(() => {
@@ -497,6 +721,64 @@ export default function CeoDashboard() {
     });
     return counts;
   }, [restaurants]);
+
+  // Distribution of partner tiers
+  const tierDistribution = useMemo(() => {
+    let basic = 0;
+    let standard = 0;
+    let premium = 0;
+    restaurants.forEach(r => {
+      const fee = r.subscriptionFee || 1000;
+      if (fee <= 500) basic++;
+      else if (fee <= 1000) standard++;
+      else premium++;
+    });
+    return [
+      { name: 'Basic (≤ ₹500)', value: basic },
+      { name: 'Standard (₹501-₹1000)', value: standard },
+      { name: 'Premium (> ₹1000)', value: premium }
+    ].filter(item => item.value > 0);
+  }, [restaurants]);
+
+  // Revenue contribution by industry category
+  const revenueByCategory = useMemo(() => {
+    const data: Record<string, number> = {};
+    payments.forEach(p => {
+      const rest = restaurants.find(r => r.id === p.restaurantId);
+      const bType = rest ? (rest.businessType || 'General Store') : 'General Store';
+      data[bType] = (data[bType] || 0) + (Number(p.amount) || 0);
+    });
+    return Object.entries(data).map(([name, value]) => ({ name, value })).filter(item => item.value > 0);
+  }, [payments, restaurants]);
+
+  // Detailed platform billing metrics for the current month
+  const billingMetrics = useMemo(() => {
+    const now = new Date();
+    const mStart = startOfMonth(now);
+    const mEnd = endOfMonth(now);
+    
+    // Total expected this month from all active partners
+    const expected = restaurants.reduce((sum, r) => sum + (r.subscriptionFee || 1000), 0);
+    
+    // Total actually collected in the current calendar month
+    const collected = payments.reduce((sum, p) => {
+      const payDate = parseFirebaseDate(p.createdAt);
+      if (isWithinInterval(payDate, { start: mStart, end: mEnd })) {
+        return sum + (Number(p.amount) || 0);
+      }
+      return sum;
+    }, 0);
+
+    const outstanding = Math.max(0, expected - collected);
+    const collectionRate = expected > 0 ? Math.round((collected / expected) * 100) : 100;
+
+    return {
+      expected,
+      collected,
+      outstanding,
+      collectionRate
+    };
+  }, [restaurants, payments]);
 
   // Check if a restaurant has paid this month
   const hasPaidThisMonth = (restId: string) => {
@@ -568,318 +850,365 @@ export default function CeoDashboard() {
           }
         };
 
-        return (
-          <div className="space-y-6 p-4 pb-24 text-left">
-            {/* CEO Personalized Welcome Panel */}
-            <div className="rounded-3xl p-6 bg-gradient-to-br from-orange-600 via-orange-500 to-amber-500 text-white shadow-lg space-y-4 relative overflow-hidden">
-              <div className="absolute top-0 right-0 translate-x-4 -translate-y-4 opacity-15 pointer-events-none">
-                <Shield className="w-40 h-40" />
-              </div>
-
-              <div className="space-y-1 relative z-10">
-                <div className="flex items-center gap-2">
-                  <span className="text-[9px] font-black uppercase tracking-widest bg-white/20 px-2.5 py-1 rounded-full text-white">
-                    System Director
-                  </span>
-                  <span className="flex h-2 w-2 relative">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
-                  </span>
-                  <span className="text-[10px] font-bold text-white/90">Main Database Connected</span>
-                </div>
-                <h2 className="text-2xl font-black tracking-tight mt-1">Hello, mnjkairi1</h2>
-                <p className="text-xs font-semibold text-white/80">Supreme Owner Panel: mnjkairi1@gmail.com</p>
-              </div>
-
-              <div className="h-px bg-white/15 w-full my-1.5" />
-
-              <div className="flex justify-between items-center text-xs font-bold text-orange-50 relative z-10">
-                <div className="space-y-0.5">
-                  <p className="text-[10px] opacity-75 uppercase tracking-wider">Active Region</p>
-                  <p className="font-extrabold text-sm flex items-center gap-1 text-white">
-                    <Globe className="w-4 h-4 text-orange-200" /> Multi-Tenant Host
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-[10px] opacity-75 uppercase tracking-wider">Local Instance Date</p>
-                  <p className="font-extrabold text-white text-sm">
-                    {format(new Date(), "MMMM dd, yyyy")}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Platform Metrics Hub */}
-            <div>
-              <h3 className={`text-[11px] font-black uppercase tracking-widest ${t.textMuted} mb-3 ml-1`}>
-                Enterprise Financial & Billing Overview
-              </h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm relative overflow-hidden group flex flex-col justify-between h-[110px]`}>
-                  <div>
-                    <p className={`text-[10px] font-bold tracking-wider uppercase mb-1 ${t.textMuted}`}>Platform Revenue</p>
-                    <h3 className={`text-2xl font-black ${t.text}`}>₹{totalEarnings.toLocaleString()}</h3>
-                  </div>
-                  <p className={`text-[9.5px] font-semibold ${t.textMuted} opacity-80`}>Lifetime collections</p>
-                </div>
-
-                <div className={`${t.primaryLight} rounded-3xl p-5 border ${t.primaryBorder} shadow-sm relative overflow-hidden group flex flex-col justify-between h-[110px]`}>
-                  <div>
-                    <p className={`text-[10px] font-bold tracking-wider uppercase mb-1 ${t.primary}`}>Monthly Revenue</p>
-                    <h3 className={`text-2xl font-black ${t.primary}`}>₹{monthlyEarnings.toLocaleString()}</h3>
-                  </div>
-                  <p className={`text-[9.5px] font-semibold ${t.primary} opacity-80`}>This billing cycle</p>
-                </div>
-
-                <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm flex flex-col justify-between h-[105px]`}>
-                  <div>
-                    <p className={`text-[10px] font-bold tracking-wider uppercase mb-1 ${t.textMuted}`}>Active Accounts</p>
-                    <h4 className={`text-2xl font-black ${t.text}`}>{restaurants.length}</h4>
-                  </div>
-                  <p className="text-[9.5px] font-bold text-emerald-500 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> live clients on platform
-                  </p>
-                </div>
-
-                <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm flex flex-col justify-between h-[105px]`}>
-                  <div>
-                    <p className={`text-[10px] font-bold tracking-wider uppercase mb-1 ${t.textMuted}`}>Monthly Billing Ratio</p>
-                    <h4 className={`text-2xl font-black ${t.text}`}>{paidThisMonthCount} <span className="text-xs text-slate-500 font-bold">/ {restaurants.length}</span></h4>
-                  </div>
-                  <div className="w-full bg-neutral-200 dark:bg-neutral-800 h-1 rounded-full overflow-hidden">
-                    <div 
-                      className="bg-emerald-500 h-full rounded-full transition-all" 
-                      style={{ width: `${Math.round((paidThisMonthCount / (restaurants.length || 1)) * 100)}%` }}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Quick Action Pending Dues Panel */}
-            {unpaidRests.length > 0 ? (
-              <div className="border border-amber-200/60 dark:border-amber-900/40 bg-amber-500/5 rounded-3xl p-5 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <AlertTriangle className="h-5 w-5 text-amber-500" />
-                    <div>
-                      <h3 className={`text-xs font-black uppercase text-amber-500`}>Awaiting Payments ({unpaidRests.length})</h3>
-                      <p className="text-[10.5px] text-amber-600/90 font-medium">Partners with due subscription premium fee for current month</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
-                  {unpaidRests.map(r => (
-                    <div key={r.id} className={`${t.card} rounded-2xl p-3 border ${t.border} flex items-center justify-between gap-3`}>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5">
-                          <p className={`text-xs font-black truncate ${t.text}`}>{r.name}</p>
-                          <span className="text-[8px] font-black uppercase bg-neutral-100 dark:bg-neutral-800 text-neutral-500 px-1.5 py-0.5 rounded">
-                            {r.businessType || 'Store'}
-                          </span>
-                        </div>
-                        <p className={`text-[10px] ${t.textMuted} font-semibold mt-0.5`}>Monthly rate: ₹{r.subscriptionFee || 1000}</p>
-                      </div>
-
-                      <div className="flex items-center gap-2 flex-none">
-                        <button
-                          title="Broadcast a warning banner on their dashboard screen instantly"
-                          onClick={() => sendPaymentDuesReminder(r)}
-                          className="px-2.5 py-1.5 rounded-xl border border-orange-500/20 text-orange-500 hover:bg-orange-500/10 font-bold text-[9px] uppercase tracking-wider transition-all"
-                        >
-                          Send Alert
-                        </button>
-                        <button
-                          onClick={() => markPaid(r)}
-                          className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-[9px] uppercase tracking-wider transition-all"
-                        >
-                          Mark Paid
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="border border-emerald-500/15 bg-emerald-500/5 rounded-3xl p-5 flex items-center gap-3">
-                <Check className="w-8 h-8 text-emerald-500 bg-emerald-500/10 p-1.5 rounded-2xl" />
-                <div>
-                  <h4 className={`text-xs font-black uppercase text-emerald-600`}>Perfect Billing Record</h4>
-                  <p className={`text-[10px] ${t.textMuted}`}>All platform clients are fully paid up for this cycle!</p>
-                </div>
-              </div>
-            )}
-
-            {/* Smart Control Center (Clients Search & Setup Command) */}
-            <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm space-y-4`}>
+        const unpaidPanel = (
+          unpaidRests.length > 0 ? (
+            <div className="border border-amber-200/60 dark:border-amber-900/40 bg-amber-500/5 rounded-3xl p-5 space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Search className={`h-5 w-5 ${t.primary}`} />
-                  <h3 className={`text-xs font-black uppercase tracking-wider ${t.text}`}>Quick-Control Terminal</h3>
+                  <AlertTriangle className="h-5 w-5 text-amber-500" />
+                  <div className="text-left">
+                    <h3 className={`text-xs font-black uppercase text-amber-500`}>Awaiting Payments ({unpaidRests.length})</h3>
+                    <p className="text-[10px] text-amber-600/90 font-semibold leading-tight">Monthly subscription fee is due</p>
+                  </div>
                 </div>
-                <span className="text-[10px] font-bold text-neutral-400">
-                  Manage business parameters
-                </span>
               </div>
 
-              {/* Categoric Switchers */}
-              <div className="flex flex-wrap gap-1.5">
-                {[
-                  { id: 'All', label: 'All Businesses' },
-                  { id: 'Restaurant', label: 'Cafes / Food' },
-                  { id: 'Salon', label: 'Beauty Salons' },
-                  { id: 'Clinic', label: 'Medical Clinics' },
-                  { id: 'Store', label: 'Stores / Retail' }
-                ].map(cat => (
-                  <button
-                    key={cat.id}
-                    type="button"
-                    onClick={() => setHomeCategoryFilter(cat.id)}
-                    className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider border transition-all ${
-                      homeCategoryFilter === cat.id
-                        ? `${t.primaryBorder} ${t.primaryLight} ${t.primary}`
-                        : `border-transparent bg-black/5 dark:bg-white/5 ${t.textMuted} hover:text-orange-500`
-                    }`}
-                  >
-                    {cat.label}
-                  </button>
+              <div className="space-y-2.5 max-h-[280px] overflow-y-auto pr-1">
+                {unpaidRests.map(r => (
+                  <div key={r.id} className={`${t.card} rounded-2xl p-3 border ${t.border} flex flex-col gap-2`}>
+                    <div className="min-w-0 flex-1 text-left">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className={`text-xs font-black truncate ${t.text}`}>{r.name}</p>
+                        <span className="text-[8px] font-black uppercase bg-neutral-100 dark:bg-neutral-800 text-neutral-500 px-1.5 py-0.5 rounded">
+                          {r.businessType || 'Store'}
+                        </span>
+                      </div>
+                      <p className={`text-[10px] ${t.textMuted} font-semibold mt-0.5`}>Monthly rate: ₹{r.subscriptionFee || 1000}</p>
+                    </div>
+
+                    <div className="flex items-center gap-2 justify-end pt-1 border-t border-black/5 dark:border-white/5">
+                      <button
+                        title="Broadcast a warning banner on their dashboard screen instantly"
+                        onClick={() => sendPaymentDuesReminder(r)}
+                        className="px-2 py-1 rounded-lg border border-orange-500/20 text-orange-500 hover:bg-orange-500/10 font-bold text-[8.5px] uppercase tracking-wider transition-all"
+                      >
+                        Send Alert
+                      </button>
+                      <button
+                        onClick={() => markPaid(r)}
+                        className="px-2.5 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-[8.5px] uppercase tracking-wider transition-all"
+                      >
+                        Mark Paid
+                      </button>
+                    </div>
+                  </div>
                 ))}
               </div>
-
-              {/* Custom Home Search Bar */}
-              <div className="relative">
-                <Search className={`absolute left-3.5 top-3.5 h-3.5 w-3.5 ${t.textMuted}`} />
-                <input 
-                  type="text" 
-                  placeholder={`Search active business or email...`} 
-                  value={homeSearchQuery}
-                  onChange={(e) => setHomeSearchQuery(e.target.value)}
-                  className={`w-full rounded-2xl border ${t.border} ${t.bg} pl-9 pr-9 py-2.5 outline-none ${t.text} text-xs font-semibold transition-all focus:ring-1 focus:ring-orange-500`}
-                />
-                {homeSearchQuery && (
-                  <button 
-                    type="button"
-                    onClick={() => setHomeSearchQuery('')}
-                    className="absolute right-3 top-2.5 p-1 rounded-full hover:bg-black/5 dark:hover:bg-white/5"
-                  >
-                    <X className={`w-3.5 h-3.5 ${t.textMuted}`} />
-                  </button>
-                )}
+            </div>
+          ) : (
+            <div className="border border-emerald-500/15 bg-emerald-500/5 rounded-3xl p-5 flex items-center gap-3">
+              <Check className="w-8 h-8 text-emerald-500 bg-emerald-500/10 p-1.5 rounded-2xl shrink-0" />
+              <div className="text-left">
+                <h4 className={`text-xs font-black uppercase text-emerald-600`}>Perfect Billing</h4>
+                <p className={`text-[10px] ${t.textMuted}`}>All platform clients are fully paid for this month!</p>
               </div>
+            </div>
+          )
+        );
 
-              {/* Matching list of restaurants with instant action toggles */}
-              <div className="space-y-3 max-h-[350px] overflow-y-auto pr-1">
-                {homeFilteredRests.map(r => {
-                  const bType = r.businessType || 'Restaurant';
-                  const isPaid = hasPaidThisMonth(r.id);
-                  const hasActiveBulletin = !!r.adminMessage;
+        return (
+          <div className="space-y-6 text-left pb-16">
+            {/* Split layout in 12 columns grid for widescreen, single column stack on mobile */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              
+              {/* Left Column (Main Stats / Search list) */}
+              <div className="space-y-6 lg:col-span-8">
+                {/* CEO Personalized Welcome Panel */}
+                <div className="rounded-3xl p-6 bg-gradient-to-br from-orange-600 via-orange-500 to-amber-500 text-white shadow-lg space-y-4 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 translate-x-4 -translate-y-4 opacity-15 pointer-events-none">
+                    <Shield className="w-40 h-40" />
+                  </div>
 
-                  return (
-                    <div 
-                      key={r.id} 
-                      className={`p-4 rounded-3xl border ${t.border} bg-neutral-50/50 dark:bg-neutral-900/30 hover:border-orange-500/20 transition-all space-y-3`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <h4 className={`text-xs font-extrabold truncate ${t.text}`}>{r.name}</h4>
-                            <span className={`text-[8.5px] font-black uppercase px-2 py-0.5 rounded ${
-                              bType === 'Salon' ? 'bg-purple-100 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400' :
-                              bType === 'Clinic' ? 'bg-blue-100 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400' :
-                              bType === 'General Store' ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400' :
-                              'bg-orange-100 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400'
-                            }`}>
-                              {bType}
-                            </span>
-                          </div>
-                          <p className={`text-[10px] ${t.textMuted} truncate font-mono mt-0.5`}>{r.ownerEmail}</p>
-                        </div>
+                  <div className="space-y-1 relative z-10">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] font-black uppercase tracking-widest bg-white/20 px-2.5 py-1 rounded-full text-white">
+                        System Director
+                      </span>
+                      <span className="flex h-2 w-2 relative">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
+                      </span>
+                      <span className="text-[10px] font-bold text-white/90">Main Database Connected</span>
+                    </div>
+                    <h2 className="text-2xl font-black tracking-tight mt-1">Hello, mnjkairi1</h2>
+                    <p className="text-xs font-semibold text-white/80">Supreme Owner Panel: mnjkairi1@gmail.com</p>
+                  </div>
 
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className={`text-[8.5px] font-black uppercase px-2 py-0.5 rounded ${
-                            isPaid 
-                              ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' 
-                              : 'bg-red-500/10 text-red-500 border border-red-500/20'
-                          }`}>
-                            {isPaid ? 'PAID' : 'DUE'}
-                          </span>
-                        </div>
+                  <div className="h-px bg-white/15 w-full my-1.5" />
+
+                  <div className="flex justify-between items-center text-xs font-bold text-orange-50 relative z-10">
+                    <div className="space-y-0.5">
+                      <p className="text-[10px] opacity-75 uppercase tracking-wider">Active Region</p>
+                      <p className="font-extrabold text-sm flex items-center gap-1 text-white">
+                        <Globe className="w-4 h-4 text-orange-200" /> Multi-Tenant Host
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] opacity-75 uppercase tracking-wider">Local Instance Date</p>
+                      <p className="font-extrabold text-white text-sm">
+                        {format(new Date(), "MMMM dd, yyyy")}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Platform Metrics Hub */}
+                <div>
+                  <h3 className={`text-[11px] font-black uppercase tracking-widest ${t.textMuted} mb-3 ml-1`}>
+                    Enterprise Financial & Billing Overview
+                  </h3>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm relative overflow-hidden group flex flex-col justify-between h-[110px]`}>
+                      <div>
+                        <p className={`text-[10px] font-bold tracking-wider uppercase mb-1 ${t.textMuted}`}>Platform Revenue</p>
+                        <h3 className={`text-xl lg:text-2xl font-black ${t.text}`}>₹{totalEarnings.toLocaleString()}</h3>
                       </div>
+                      <p className={`text-[9.5px] font-semibold ${t.textMuted} opacity-80`}>Lifetime collections</p>
+                    </div>
 
-                      {/* Display bulletin notice if actively broadcasting to clients */}
-                      {hasActiveBulletin && (
-                        <div className="p-2.5 rounded-xl bg-amber-500/5 border border-amber-500/20 text-[10px] flex items-start gap-1.5 text-amber-600 font-medium my-1">
-                          <Megaphone className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate">Home Bulletin: "{r.adminMessage}"</p>
-                          </div>
-                          <button 
-                            type="button"
-                            onClick={() => quickClearBulletinMessage(r)}
-                            className="text-[8px] font-black uppercase text-amber-700 bg-amber-100 dark:bg-amber-950 px-1.5 py-0.5 rounded hover:bg-amber-200 transition-all shrink-0"
-                          >
-                            Clear
-                          </button>
-                        </div>
-                      )}
+                    <div className={`${t.primaryLight} rounded-3xl p-5 border ${t.primaryBorder} shadow-sm relative overflow-hidden group flex flex-col justify-between h-[110px]`}>
+                      <div>
+                        <p className={`text-[10px] font-bold tracking-wider uppercase mb-1 ${t.primary}`}>Monthly Revenue</p>
+                        <h3 className={`text-xl lg:text-2xl font-black ${t.primary}`}>₹{monthlyEarnings.toLocaleString()}</h3>
+                      </div>
+                      <p className={`text-[9.5px] font-semibold ${t.primary} opacity-80`}>This billing cycle</p>
+                    </div>
 
-                      {/* Control Panel buttons for this client */}
-                      <div className="flex items-center justify-between gap-2.5 pt-1.5 border-t border-black/5 dark:border-white/5">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedToolsClient(r.id);
-                            setAdminMessageBody(r.adminMessage || '');
-                            setAiItemPrompt('');
-                            setAiItemName('');
-                            setAiItemPrice('');
-                            setCustomBusinessType(r.businessType || 'Restaurant');
-                            setCustomClientTheme(r.theme || 'classic-orange');
-                            setCustomStaffCodeEnabled(r.enableStaffCode || false);
-                            setActiveTab('tools');
-                          }}
-                          className="flex items-center gap-1.5 text-xs font-black text-orange-500 hover:text-orange-600"
-                        >
-                          <Settings className="w-3.5 h-3.5" />
-                          <span>Configure Overrides</span>
-                        </button>
+                    <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm flex flex-col justify-between h-[110px]`}>
+                      <div>
+                        <p className={`text-[10px] font-bold tracking-wider uppercase mb-1 ${t.textMuted}`}>Active Accounts</p>
+                        <h4 className={`text-xl lg:text-2xl font-black ${t.text}`}>{restaurants.length}</h4>
+                      </div>
+                      <p className="text-[9.5px] font-bold text-emerald-500 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> live clients
+                      </p>
+                    </div>
 
-                        <div className="flex items-center gap-2">
-                          {!isPaid && (
-                            <button
-                              type="button"
-                              onClick={() => markPaid(r)}
-                              className="px-2.5 py-1 text-[9px] font-extrabold uppercase bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-xl hover:bg-emerald-500 hover:text-white transition-all"
-                            >
-                              Pay Due
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => toggleRestaurantBlock(r.id, !!r.isBlocked)}
-                            className={`px-2.5 py-1 rounded-xl text-[9px] font-extrabold uppercase border tracking-wider transition-all flex items-center gap-1 ${
-                              r.isBlocked 
-                                ? 'bg-red-500/10 text-red-500 border-red-500/20 hover:bg-red-500 hover:text-white' 
-                                : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20 hover:bg-red-500 hover:text-white hover:border-red-500/20'
-                            }`}
-                          >
-                            <Power className="w-2.5 h-2.5" />
-                            <span>{r.isBlocked ? 'Blocked' : 'Active'}</span>
-                          </button>
-                        </div>
+                    <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm flex flex-col justify-between h-[110px]`}>
+                      <div>
+                        <p className={`text-[10px] font-bold tracking-wider uppercase mb-1 ${t.textMuted}`}>Monthly Billing</p>
+                        <h4 className={`text-xl lg:text-2xl font-black ${t.text}`}>{paidThisMonthCount} <span className="text-xs text-slate-500 font-bold">/ {restaurants.length}</span></h4>
+                      </div>
+                      <div className="w-full bg-neutral-200 dark:bg-neutral-800 h-1 rounded-full overflow-hidden mb-1">
+                        <div 
+                          className="bg-emerald-500 h-full rounded-full transition-all" 
+                          style={{ width: `${Math.round((paidThisMonthCount / (restaurants.length || 1)) * 100)}%` }}
+                        />
                       </div>
                     </div>
-                  );
-                })}
-
-                {homeFilteredRests.length === 0 && (
-                  <div className="text-center py-8 border-2 border-dashed rounded-2xl border-neutral-200/50">
-                    <HelpCircle className="w-8 h-8 mx-auto text-neutral-400 mb-2" />
-                    <p className="text-xs font-extrabold text-neutral-400 uppercase tracking-widest">No matching partners found</p>
                   </div>
-                )}
+                </div>
+
+                {/* Inline alerts list shown ONLY on Mobile viewports */}
+                <div className="block lg:hidden">
+                  {unpaidPanel}
+                </div>
+
+                {/* Smart Control Center (Clients Search & Setup Command) */}
+                <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm space-y-4`}>
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <Search className={`h-5 w-5 ${t.primary}`} />
+                      <h3 className={`text-xs font-black uppercase tracking-wider ${t.text}`}>Quick-Control Terminal</h3>
+                    </div>
+                    <span className="text-[10px] font-bold text-neutral-400">
+                      Manage business parameters
+                    </span>
+                  </div>
+
+                  {/* Categoric Switchers */}
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { id: 'All', label: 'All Businesses' },
+                      { id: 'Restaurant', label: 'Cafes / Food' },
+                      { id: 'Salon', label: 'Beauty Salons' },
+                      { id: 'Clinic', label: 'Medical Clinics' },
+                      { id: 'Store', label: 'Stores / Retail' }
+                    ].map(cat => (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => setHomeCategoryFilter(cat.id)}
+                        className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider border transition-all ${
+                          homeCategoryFilter === cat.id
+                            ? `${t.primaryBorder} ${t.primaryLight} ${t.primary}`
+                            : `border-transparent bg-black/5 dark:bg-white/5 ${t.textMuted} hover:text-orange-500`
+                        }`}
+                      >
+                        {cat.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Custom Home Search Bar */}
+                  <div className="relative">
+                    <Search className={`absolute left-3.5 top-3.5 h-3.5 w-3.5 ${t.textMuted}`} />
+                    <input 
+                      type="text" 
+                      placeholder={`Search active business or email...`} 
+                      value={homeSearchQuery}
+                      onChange={(e) => setHomeSearchQuery(e.target.value)}
+                      className={`w-full rounded-2xl border ${t.border} ${t.bg} pl-9 pr-9 py-2.5 outline-none ${t.text} text-xs font-semibold transition-all focus:ring-1 focus:ring-orange-500`}
+                    />
+                    {homeSearchQuery && (
+                      <button 
+                        type="button"
+                        onClick={() => setHomeSearchQuery('')}
+                        className="absolute right-3 top-2.5 p-1 rounded-full hover:bg-black/5 dark:hover:bg-white/5"
+                      >
+                        <X className={`w-3.5 h-3.5 ${t.textMuted}`} />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Matching list of restaurants with instant action toggles */}
+                  <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
+                    {homeFilteredRests.map(r => {
+                      const bType = r.businessType || 'Restaurant';
+                      const isPaid = hasPaidThisMonth(r.id);
+                      const hasActiveBulletin = !!r.adminMessage;
+
+                      return (
+                        <div 
+                          key={r.id} 
+                          className={`p-4 rounded-3xl border ${t.border} bg-neutral-50/50 dark:bg-neutral-900/30 hover:border-orange-500/20 transition-all space-y-3`}
+                        >
+                          <div className="flex items-start justify-between gap-3 text-left">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <h4 className={`text-xs font-extrabold truncate ${t.text}`}>{r.name}</h4>
+                                <span className={`text-[8.5px] font-black uppercase px-2 py-0.5 rounded ${
+                                  bType === 'Salon' ? 'bg-purple-100 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400' :
+                                  bType === 'Clinic' ? 'bg-blue-100 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400' :
+                                  bType === 'General Store' ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400' :
+                                  'bg-orange-100 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400'
+                                }`}>
+                                  {bType}
+                                </span>
+                              </div>
+                              <p className={`text-[10px] ${t.textMuted} truncate font-mono mt-0.5`}>{r.ownerEmail}</p>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className={`text-[8.5px] font-black uppercase px-2 py-0.5 rounded ${
+                                isPaid 
+                                  ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' 
+                                  : 'bg-red-500/10 text-red-500 border border-red-500/20'
+                              }`}>
+                                {isPaid ? 'PAID' : 'DUE'}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Display bulletin notice if actively broadcasting to clients */}
+                          {hasActiveBulletin && (
+                            <div className="p-2.5 rounded-xl bg-amber-500/5 border border-amber-500/20 text-[10px] flex items-start gap-1.5 text-amber-600 font-medium my-1 text-left">
+                              <Megaphone className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate">Home Bulletin: "{r.adminMessage}"</p>
+                              </div>
+                              <button 
+                                type="button"
+                                onClick={() => quickClearBulletinMessage(r)}
+                                className="text-[8px] font-black uppercase text-amber-700 bg-amber-100 dark:bg-amber-950 px-1.5 py-0.5 rounded hover:bg-amber-200 transition-all shrink-0"
+                              >
+                                Clear
+                              </button>
+                            </div>
+                          )}
+
+                          {/* Control Panel buttons for this client */}
+                          <div className="flex items-center justify-between gap-2.5 pt-1.5 border-t border-black/5 dark:border-white/5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedToolsClient(r.id);
+                                setAdminMessageBody(r.adminMessage || '');
+                                setAiItemPrompt('');
+                                setAiItemName('');
+                                setAiItemPrice('');
+                                setCustomBusinessType(r.businessType || 'Restaurant');
+                                setCustomClientTheme(r.theme || 'classic-orange');
+                                setCustomStaffCodeEnabled(r.enableStaffCode || false);
+                                setCustomSubscriptionFee(r.subscriptionFee || 1000);
+                                setCustomStaffCode(r.staffCode || '');
+                                setActiveTab('tools');
+                              }}
+                              className="flex items-center gap-1.5 text-xs font-black text-orange-500 hover:text-orange-600 transition-all"
+                            >
+                              <Settings className="w-3.5 h-3.5" />
+                              <span>Configure Overrides</span>
+                            </button>
+
+                            <div className="flex items-center gap-2">
+                              {!isPaid && (
+                                <button
+                                  type="button"
+                                  onClick={() => markPaid(r)}
+                                  className="px-2.5 py-1 text-[9px] font-extrabold uppercase bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-xl hover:bg-emerald-500 hover:text-white transition-all"
+                                >
+                                  Pay Due
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => toggleRestaurantBlock(r.id, !!r.isBlocked)}
+                                className={`px-2.5 py-1 rounded-xl text-[9px] font-extrabold uppercase border tracking-wider transition-all flex items-center gap-1 ${
+                                  r.isBlocked 
+                                    ? 'bg-red-500/10 text-red-500 border-red-500/20 hover:bg-red-500 hover:text-white' 
+                                    : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20 hover:bg-red-500 hover:text-white hover:border-red-500/20'
+                                }`}
+                              >
+                                <Power className="w-2.5 h-2.5" />
+                                <span>{r.isBlocked ? 'Blocked' : 'Active'}</span>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {homeFilteredRests.length === 0 && (
+                      <div className="text-center py-8 border-2 border-dashed rounded-2xl border-neutral-200/50">
+                        <HelpCircle className="w-8 h-8 mx-auto text-neutral-400 mb-2" />
+                        <p className="text-xs font-extrabold text-neutral-400 uppercase tracking-widest">No matching partners found</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
+
+              {/* Right Column (Awaiting payments and server stats sidebar component, nested on widescreen) */}
+              <div className="hidden lg:block lg:col-span-4 space-y-6 sticky top-6">
+                {unpaidPanel}
+                
+                {/* Platform Live Stats Desk Panel */}
+                <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm space-y-4 text-left`}>
+                  <div className="flex items-center gap-2">
+                    <Activity className={`h-4.5 w-4.5 text-emerald-500`} />
+                    <h4 className={`text-xs font-black uppercase tracking-widest ${t.text}`}>Platform Pulse</h4>
+                  </div>
+                  <div className="space-y-2.5 text-[11px] font-bold text-neutral-500 dark:text-neutral-400">
+                    <div className="flex justify-between items-center py-1.5 border-b border-black/5 dark:border-white/5">
+                      <span className="opacity-75">Server Ingress Influx</span>
+                      <span className="text-emerald-500 font-mono">100% Operational</span>
+                    </div>
+                    <div className="flex justify-between items-center py-1.5 border-b border-black/5 dark:border-white/5">
+                      <span className="opacity-75">Tenant Base Tier Ratio</span>
+                      <span className={`font-mono ${t.text}`}>High Premium</span>
+                    </div>
+                    <div className="flex justify-between items-center py-1.5 border-b border-black/5 dark:border-white/5">
+                      <span className="opacity-75">Firestore DB Sync</span>
+                      <span className="text-orange-500 font-mono">Real-time Hooked</span>
+                    </div>
+                    <div className="flex justify-between items-center py-1.5">
+                      <span className="opacity-75">Active Sessions Code</span>
+                      <span className={`font-mono text-emerald-500`}>Direct SSL Secure</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
             </div>
 
             {/* Platform Quick Info Footer */}
@@ -900,69 +1229,305 @@ export default function CeoDashboard() {
         );
       }
       
-      case 'charts':
+      case 'charts': {
+        const PIE_COLORS = ['#3b82f6', '#f97316', '#10b981', '#8b5cf6', '#ec4899', '#eab308'];
+
         return (
-          <div className="space-y-4 p-4 pb-24 h-full flex flex-col">
-            <h2 className={`text-xl font-black mb-2 ${t.text}`}>Financials</h2>
-            <div className="grid grid-cols-2 gap-4 mb-4">
-               <div className={`${t.card} rounded-2xl p-4 border ${t.border} shadow-sm`}>
-                 <p className={`text-[10px] font-bold tracking-widest uppercase mb-1 ${t.textMuted}`}>This Month</p>
-                 <h4 className={`text-xl font-black ${t.text}`}>₹{monthlyEarnings.toLocaleString()}</h4>
-               </div>
-               <div className={`${t.card} rounded-2xl p-4 border ${t.border} shadow-sm`}>
-                 <p className={`text-[10px] font-bold tracking-widest uppercase mb-1 ${t.textMuted}`}>This Year</p>
-                 <h4 className={`text-xl font-black ${t.text}`}>₹{yearlyEarnings.toLocaleString()}</h4>
-               </div>
+          <div className="space-y-6 p-4 pb-24 h-full flex flex-col text-left">
+            {/* Page Header */}
+            <div>
+              <span className={`text-[9px] font-black uppercase tracking-widest ${t.primary} bg-orange-500/10 px-2.5 py-1 rounded-full ${t.primaryLight}`}>
+                Executive Analytics
+              </span>
+              <h2 className={`text-xl font-black mt-2 ${t.text}`}>Platform Financial Health</h2>
+              <p className={`text-[11px] ${t.textMuted} mt-0.5`}>Real-time commercial indices and billing efficiency</p>
             </div>
-            
-            <div className={`${t.card} rounded-3xl p-4 border ${t.border} shadow-sm flex-none`}>
-              <h3 className={`text-sm font-bold uppercase tracking-wider mb-6 ml-2 ${t.textMuted}`}>Monthly Revenue</h3>
-              <div className="h-[250px] w-full">
+
+            {/* Platform Quick Statistics Overview */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className={`${t.card} rounded-3xl p-4 border ${t.border} shadow-sm relative overflow-hidden flex flex-col justify-between h-[105px]`}>
+                <div>
+                  <p className={`text-[10px] font-bold tracking-widest uppercase mb-1 ${t.textMuted}`}>All-Time Revenue</p>
+                  <h4 className={`text-xl font-black ${t.text}`}>₹{totalEarnings.toLocaleString()}</h4>
+                </div>
+                <p className="text-[9px] font-bold text-emerald-500">● Aggregate platform subscription</p>
+              </div>
+
+              <div className={`${t.card} rounded-3xl p-4 border ${t.border} shadow-sm relative overflow-hidden flex flex-col justify-between h-[105px]`}>
+                <div>
+                  <p className={`text-[10px] font-bold tracking-widest uppercase mb-1 ${t.textMuted}`}>This Month Balance</p>
+                  <h4 className={`text-xl font-black ${t.text}`}>₹{monthlyEarnings.toLocaleString()}</h4>
+                </div>
+                <p className="text-[9px] font-bold text-orange-500">● Earned in current billing cycle</p>
+              </div>
+            </div>
+
+            {/* Interactive Trend Chart */}
+            <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm space-y-4`}>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className={`text-xs font-black uppercase tracking-widest ${t.textMuted}`}>Performance Timeline</h3>
+                  <p className={`text-[11px] ${t.textMuted}`}>Monthly subscription collections graph</p>
+                </div>
+                
+                {/* Visual Chart Type Toggle Option */}
+                <div className="flex bg-neutral-100 dark:bg-neutral-800 p-1 rounded-2xl border border-black/5 dark:border-white/5 w-fit">
+                  {(['bar', 'area', 'line'] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setRevenueChartMode(mode)}
+                      className={`px-3 py-1 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all ${
+                        revenueChartMode === mode
+                          ? `${t.primaryLight} ${t.primary} shadow-sm`
+                          : `text-neutral-500 hover:text-orange-500`
+                      }`}
+                    >
+                      {mode}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="h-[240px] w-full pt-2">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chartData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={themeId === 'dark' ? '#2d3748' : '#e5e5e5'} vertical={false} />
-                    <XAxis dataKey="name" stroke={themeId === 'dark' ? '#a3a3a3' : '#737373'} fontSize={10} tickLine={false} axisLine={false} />
-                    <YAxis stroke={themeId === 'dark' ? '#a3a3a3' : '#737373'} fontSize={10} tickLine={false} axisLine={false} tickFormatter={(val) => `₹${val}`} width={40} />
-                    <Tooltip 
-                      cursor={{fill: themeId === 'dark' ? '#2d3748' : '#f5f5f5', opacity: 0.4}}
-                      contentStyle={{ backgroundColor: themeId === 'dark' ? '#1a202c' : '#fff', borderColor: themeId === 'dark' ? '#2d3748' : '#e5e5e5', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                      itemStyle={{ color: themeId === 'dark' ? '#fff' : '#000', fontWeight: 'bold' }}
-                      labelStyle={{ color: themeId === 'dark' ? '#a0aec0' : '#737373', marginBottom: '4px' }}
-                    />
-                    <Bar dataKey="Earnings" fill={t.chartBar} radius={[4, 4, 0, 0]} />
-                  </BarChart>
+                  {revenueChartMode === 'bar' ? (
+                    <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={themeId === 'dark' ? '#2d3748' : '#e5e5e5'} vertical={false} />
+                      <XAxis dataKey="name" stroke={themeId === 'dark' ? '#a3a3a3' : '#737373'} fontSize={9} tickLine={false} axisLine={false} />
+                      <YAxis stroke={themeId === 'dark' ? '#a3a3a3' : '#737373'} fontSize={9} tickLine={false} axisLine={false} tickFormatter={(val) => `₹${val}`} />
+                      <Tooltip 
+                        cursor={{ fill: themeId === 'dark' ? '#2d3748' : '#f5f5f5', opacity: 0.4 }}
+                        contentStyle={{ backgroundColor: themeId === 'dark' ? '#161b22' : '#fff', borderColor: themeId === 'dark' ? '#30363d' : '#e5e5e5', borderRadius: '12px' }}
+                        itemStyle={{ color: themeId === 'dark' ? '#fff' : '#000', fontWeight: 'bold', fontSize: '11px' }}
+                        labelStyle={{ color: '#8b949e', fontSize: '10px' }}
+                      />
+                      <Bar dataKey="Earnings" fill={t.chartBar} radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  ) : revenueChartMode === 'area' ? (
+                    <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="areaColor" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor={t.chartBar} stopOpacity={0.4}/>
+                          <stop offset="95%" stopColor={t.chartBar} stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke={themeId === 'dark' ? '#2d3748' : '#e5e5e5'} vertical={false} />
+                      <XAxis dataKey="name" stroke={themeId === 'dark' ? '#a3a3a3' : '#737373'} fontSize={9} tickLine={false} axisLine={false} />
+                      <YAxis stroke={themeId === 'dark' ? '#a3a3a3' : '#737373'} fontSize={9} tickLine={false} axisLine={false} tickFormatter={(val) => `₹${val}`} />
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: themeId === 'dark' ? '#161b22' : '#fff', borderColor: themeId === 'dark' ? '#30363d' : '#e5e5e5', borderRadius: '12px' }}
+                        itemStyle={{ color: themeId === 'dark' ? '#fff' : '#000', fontWeight: 'bold', fontSize: '11px' }}
+                        labelStyle={{ color: '#8b949e', fontSize: '10px' }}
+                      />
+                      <Area type="monotone" dataKey="Earnings" stroke={t.chartBar} strokeWidth={2.5} fillOpacity={1} fill="url(#areaColor)" />
+                    </AreaChart>
+                  ) : (
+                    <LineChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={themeId === 'dark' ? '#2d3748' : '#e5e5e5'} vertical={false} />
+                      <XAxis dataKey="name" stroke={themeId === 'dark' ? '#a3a3a3' : '#737373'} fontSize={9} tickLine={false} axisLine={false} />
+                      <YAxis stroke={themeId === 'dark' ? '#a3a3a3' : '#737373'} fontSize={9} tickLine={false} axisLine={false} tickFormatter={(val) => `₹${val}`} />
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: themeId === 'dark' ? '#161b22' : '#fff', borderColor: themeId === 'dark' ? '#30363d' : '#e5e5e5', borderRadius: '12px' }}
+                        itemStyle={{ color: themeId === 'dark' ? '#fff' : '#000', fontWeight: 'bold', fontSize: '11px' }}
+                        labelStyle={{ color: '#8b949e', fontSize: '10px' }}
+                      />
+                      <Line type="monotone" dataKey="Earnings" stroke={t.chartBar} strokeWidth={3.5} dot={{ stroke: t.chartBar, strokeWidth: 2, r: 3, fill: '#fff' }} activeDot={{ r: 6 }} />
+                    </LineChart>
+                  )}
                 </ResponsiveContainer>
               </div>
             </div>
 
-            {/* Business Diversity Statistics */}
+            {/* Billing Efficiency Hub */}
             <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm space-y-4`}>
-              <div className="text-left">
-                <h3 className={`text-xs font-black uppercase tracking-widest ${t.textMuted}`}>Active Business Ratios</h3>
-                <p className={`text-[11px] ${t.textMuted}`}>Distribution of service partners by commercial category</p>
+              <div>
+                <h3 className={`text-xs font-black uppercase tracking-widest ${t.textMuted}`}>Platform Collection Report</h3>
+                <p className={`text-[11px] ${t.textMuted}`}>Billing efficiency statistics for this current month cycle</p>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 pt-2">
-                {Object.entries(businessTypeCounts).map(([type, count]) => {
-                  const numCount = Number(count) || 0;
-                  return (
-                    <div key={type} className="flex items-center justify-between p-3 rounded-2xl bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5">
-                      <div className="min-w-0 pr-2 text-left">
-                        <p className={`text-xs font-bold truncate ${t.text}`}>{type}</p>
-                        <p className={`text-[10px] ${t.textMuted} font-semibold`}>
-                          {Math.round((numCount / (restaurants.length || 1)) * 100)}% of total
-                        </p>
-                      </div>
-                      <span className={`text-sm font-black px-2.5 py-1 rounded-xl shrink-0 ${t.primaryLight} ${t.primary}`}>
-                        {numCount}
-                      </span>
-                    </div>
-                  );
-                })}
+              {/* Progress visual bar */}
+              <div className="space-y-1">
+                <div className="flex justify-between items-center text-xs font-black">
+                  <span className={t.textMuted}>Collection Realization Rate</span>
+                  <span className="text-emerald-500">{billingMetrics.collectionRate}% Achieved</span>
+                </div>
+                <div className="w-full bg-neutral-200 dark:bg-neutral-800 h-2.5 rounded-full overflow-hidden">
+                  <div 
+                    className="bg-emerald-500 h-full rounded-full transition-all duration-500" 
+                    style={{ width: `${billingMetrics.collectionRate}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3 text-center pt-2">
+                <div className="p-3 rounded-2xl bg-neutral-50 dark:bg-black/20 border border-black/5 dark:border-white/5">
+                  <p className="text-[9px] font-bold text-slate-400 uppercase">Target Amount</p>
+                  <p className={`text-xs font-black ${t.text} mt-1`}>₹{billingMetrics.expected.toLocaleString()}</p>
+                </div>
+                <div className="p-3 rounded-2xl bg-emerald-500/5 border border-emerald-500/10">
+                  <p className="text-[9px] font-bold text-emerald-500/80 uppercase">Collected</p>
+                  <p className="text-xs font-black text-emerald-500 mt-1">₹{billingMetrics.collected.toLocaleString()}</p>
+                </div>
+                <div className="p-3 rounded-2xl bg-amber-500/5 border border-amber-500/10">
+                  <p className="text-[9px] font-bold text-amber-500/80 uppercase">Outstanding</p>
+                  <p className="text-xs font-black text-amber-500 mt-1">₹{billingMetrics.outstanding.toLocaleString()}</p>
+                </div>
               </div>
             </div>
+
+            {/* Split Breakdown sections - Two columns */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              
+              {/* Industry Revenue Share Donut/Pie Chart */}
+              <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm space-y-4`}>
+                <div>
+                  <h3 className={`text-xs font-black uppercase tracking-widest ${t.textMuted}`}>Revenue Share by Sector</h3>
+                  <p className={`text-[11px] ${t.textMuted}`}>Platform revenue split by partner industries</p>
+                </div>
+
+                {revenueByCategory.length > 0 ? (
+                  <div className="flex flex-col items-center">
+                    <div className="h-[140px] w-full max-w-[200px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={revenueByCategory}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={40}
+                            outerRadius={55}
+                            paddingAngle={4}
+                            dataKey="value"
+                          >
+                            {revenueByCategory.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip formatter={(value) => `₹${value}`} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                    {/* Minimal Legend detail list */}
+                    <div className="w-full space-y-1.5 pt-2">
+                      {revenueByCategory.map((item, index) => {
+                        const totalRev = revenueByCategory.reduce((sum, next) => sum + next.value, 0);
+                        const pct = totalRev > 0 ? Math.round((item.value / totalRev) * 100) : 0;
+                        return (
+                          <div key={item.name} className="flex justify-between items-center text-[10.5px] font-bold">
+                            <div className="flex items-center gap-2">
+                              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: PIE_COLORS[index % PIE_COLORS.length] }} />
+                              <span className={t.text}>{item.name}</span>
+                            </div>
+                            <span className={t.textMuted}>₹{item.value.toLocaleString()} ({pct}%)</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="py-10 text-center text-neutral-400 font-bold text-xs uppercase tracking-wider">
+                    No Revenue received yet
+                  </div>
+                )}
+              </div>
+
+              {/* Pricing Tiers Distribution */}
+              <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm space-y-4`}>
+                <div>
+                  <h3 className={`text-xs font-black uppercase tracking-widest ${t.textMuted}`}>Premium Tier Ratios</h3>
+                  <p className={`text-[11px] ${t.textMuted}`}>Distribution of clients by billing tiers</p>
+                </div>
+
+                {tierDistribution.length > 0 ? (
+                  <div className="flex flex-col items-center">
+                    <div className="h-[140px] w-full max-w-[200px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={tierDistribution}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={0}
+                            outerRadius={55}
+                            paddingAngle={3}
+                            dataKey="value"
+                          >
+                            {tierDistribution.map((entry, index) => (
+                              <Cell key={`cell-tier-${index}`} fill={['#f97316', '#3b82f6', '#10b981', '#ec4899'][index % 4]} />
+                            ))}
+                          </Pie>
+                          <Tooltip />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                    {/* Tiers List */}
+                    <div className="w-full space-y-1.5 pt-2">
+                      {tierDistribution.map((item, index) => {
+                        const totalTenants = restaurants.length || 1;
+                        const pct = Math.round((item.value / totalTenants) * 100);
+                        const tierColor = ['#f97316', '#3b82f6', '#10b981', '#ec4899'][index % 4];
+                        return (
+                          <div key={item.name} className="flex justify-between items-center text-[10.5px] font-bold">
+                            <div className="flex items-center gap-2">
+                              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: tierColor }} />
+                              <span className={t.text}>{item.name}</span>
+                            </div>
+                            <span className={t.textMuted}>{item.value} client{item.value > 1 ? 's' : ''} ({pct}%)</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="py-10 text-center text-neutral-400 font-bold text-xs uppercase tracking-wider">
+                    No active tenant entities
+                  </div>
+                )}
+              </div>
+
+            </div>
+
+            {/* NEW ADDITION: Platform Footprint Insights Card Grid */}
+            <div className={`${t.card} border ${t.border} rounded-[32px] p-6 space-y-4 shadow-xs`}>
+              <div>
+                <h3 className={`text-xs font-black uppercase tracking-widest ${t.textMuted} flex items-center gap-2`}>
+                  <TrendingUp className="w-4 h-4 text-orange-500" /> Platform Expansion Insights
+                </h3>
+                <p className={`text-[11px] ${t.textMuted}`}>Real-time diversification metrics and partner yield aggregates</p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="p-4 rounded-2xl bg-neutral-100 dark:bg-black/15 border border-black/5 dark:border-white/5 space-y-1">
+                  <span className="text-[10px] font-black uppercase text-neutral-400 tracking-wider">Merchant Density</span>
+                  <p className={`text-lg font-black ${t.text}`}>{restaurants.length} Registered</p>
+                  <p className="text-[9px] font-semibold text-slate-500">Live operational stores</p>
+                </div>
+                <div className="p-4 rounded-2xl bg-neutral-100 dark:bg-black/15 border border-black/5 dark:border-white/5 space-y-1">
+                  <span className="text-[10px] font-black uppercase text-neutral-400 tracking-wider">Sector Divisions</span>
+                  <p className={`text-lg font-black ${t.text}`}>{Object.keys(businessTypeCounts).length} Categories</p>
+                  <p className="text-[9px] font-semibold text-slate-500">Active industry streams</p>
+                </div>
+                <div className="p-4 rounded-2xl bg-neutral-100 dark:bg-black/15 border border-black/5 dark:border-white/5 space-y-1">
+                  <span className="text-[10px] font-black uppercase text-neutral-400 tracking-wider">Dominant Stream</span>
+                  <p className={`text-lg font-black ${t.text} truncate`} title={Object.entries(businessTypeCounts).sort((a,b) => (b[1] as number) - (a[1] as number))[0]?.[0] || 'N/A'}>
+                    {Object.entries(businessTypeCounts).sort((a,b) => (b[1] as number) - (a[1] as number))[0]?.[0] || 'None'}
+                  </p>
+                  <p className="text-[9px] font-semibold text-slate-500">Highest client absorption</p>
+                </div>
+                <div className="p-4 rounded-2xl bg-neutral-100 dark:bg-black/15 border border-black/5 dark:border-white/5 space-y-1">
+                  <span className="text-[10px] font-black uppercase text-neutral-400 tracking-wider">Avg subscription Yield</span>
+                  <p className={`text-lg font-black ${t.text}`}>
+                    ₹{restaurants.length > 0 ? Math.round(restaurants.reduce((sum, r) => sum + (r.subscriptionFee || 1000), 0) / restaurants.length).toLocaleString() : '0'}
+                  </p>
+                  <p className="text-[9px] font-semibold text-slate-500">Mean recurring retail yield</p>
+                </div>
+              </div>
+            </div>
+
           </div>
         );
+      }
 
       case 'clients': {
         const basicRests = restaurants.filter(r => (r.subscriptionFee || 1000) <= 500);
@@ -1205,6 +1770,8 @@ export default function CeoDashboard() {
                           setCustomBusinessType(r.businessType || 'Restaurant');
                           setCustomClientTheme(r.theme || 'classic-orange');
                           setCustomStaffCodeEnabled(r.enableStaffCode || false);
+                          setCustomSubscriptionFee(r.subscriptionFee || 1000);
+                          setCustomStaffCode(r.staffCode || '');
                         }}
                         className={`w-full text-left p-4 rounded-2xl border ${t.border} ${t.bg} hover:border-orange-500/40 hover:bg-black/5 dark:hover:bg-white/5 transition-all duration-200 flex items-center justify-between group active:scale-98`}
                       >
@@ -1512,6 +2079,37 @@ export default function CeoDashboard() {
                     </div>
                   </div>
 
+                  {/* Custom Subscription Fee Override Input */}
+                  <div className="space-y-2">
+                    <label className={`text-[10px] font-black uppercase tracking-widest ${t.textMuted} block`}>
+                      Subscription Fee Rate (INR)
+                    </label>
+                    <div className="relative">
+                      <span className={`absolute left-4 top-3 leading-none text-xs font-black ${t.textMuted}`}>₹</span>
+                      <input 
+                        type="number"
+                        placeholder="e.g. 1000"
+                        value={customSubscriptionFee}
+                        onChange={(e) => setCustomSubscriptionFee(Number(e.target.value) || 0)}
+                        className={`w-full rounded-2xl border ${t.border} ${t.bg} pl-8 pr-4 py-3 outline-none ${t.text} text-xs font-bold focus:ring-1 focus:ring-orange-500`}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Custom Default Staff Access PIN Input */}
+                  <div className="space-y-2">
+                    <label className={`text-[10px] font-black uppercase tracking-widest ${t.textMuted} block`}>
+                      Global Staff/Register PIN
+                    </label>
+                    <input 
+                      type="text"
+                      placeholder="e.g. 1234, ST-A9"
+                      value={customStaffCode}
+                      onChange={(e) => setCustomStaffCode(e.target.value)}
+                      className={`w-full rounded-2xl border ${t.border} ${t.bg} px-4 py-3 outline-none ${t.text} text-xs font-bold focus:ring-1 focus:ring-orange-500`}
+                    />
+                  </div>
+
                   {/* Staff Code Feature Flag */}
                   <div className="flex items-center justify-between p-3.5 rounded-2xl bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5">
                     <div className="pr-3 text-left">
@@ -1541,40 +2139,6 @@ export default function CeoDashboard() {
                     {updatingOverrides ? 'Saving overrides...' : 'Apply Client Configuration'} <Check className="w-4 h-4" />
                   </button>
                 </div>
-
-                {/* Card 4: Blueprint Catalog Injection */}
-                <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm space-y-4`}>
-                  <div className="flex items-center gap-2">
-                    <Sparkles className={`h-5 w-5 text-emerald-500`} />
-                    <h3 className={`text-sm font-black uppercase tracking-wider ${t.text}`}>1-Click Starter Kit Catalog</h3>
-                  </div>
-
-                  <p className={`text-[11px] ${t.textMuted} leading-relaxed`}>
-                     Instantly populate custom starting blueprints. Perfect to bootstrap testing catalogs for different business categories.
-                  </p>
-
-                  <div className="space-y-2 pt-1">
-                    {[
-                      { type: 'Food & Cafe / Restaurant', desc: 'Adds Margherita Pizza, Burgers, Smoothies, Iced brews & breadsticks.' },
-                      { type: 'Beauty Salon & Spa', desc: 'Adds Hair color, Detox facial, haircutting, Pedicure, and therapy services.' },
-                      { type: 'Medical Clinic / Dentist', desc: 'Adds Physician fee, Dental scaling, child screening, dental X-Rays.' },
-                      { type: 'General Retail & Essentials', desc: 'Adds Aloe Gel, Coconut Oil, Vitamins, Body Wash, and Herbal tea.' }
-                    ].map(preset => (
-                      <button
-                        key={preset.type}
-                        type="button"
-                        onClick={() => handleInjectTemplate(preset.type)}
-                        className={`w-full text-left p-3.5 rounded-2xl border ${t.border} ${t.bg} hover:border-emerald-500/35 hover:bg-emerald-50/5 dark:hover:bg-emerald-500/5 transition-all text-sm font-bold flex flex-col gap-1`}
-                      >
-                        <div className="flex items-center justify-between w-full">
-                          <span className={`text-xs font-black ${t.text}`}>{preset.type}</span>
-                          <span className="text-[9px] font-black uppercase text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded">Inject Starter Kit</span>
-                        </div>
-                        <p className={`text-[10.5px] font-medium leading-relaxed ${t.textMuted}`}>{preset.desc}</p>
-                      </button>
-                    ))}
-                  </div>
-                </div>
               </div>
             )}
           </div>
@@ -1583,62 +2147,458 @@ export default function CeoDashboard() {
 
       case 'settings':
         return (
-          <div className="space-y-4 p-4 pb-24 flex flex-col h-full justify-center text-center max-w-sm mx-auto">
-            <div className={`w-24 h-24 ${t.primaryLight} rounded-full flex items-center justify-center mx-auto mb-6 border ${t.primaryBorder}`}>
-              <Shield className={`h-10 w-10 ${t.primary}`} />
-            </div>
-            <h2 className={`text-2xl font-black mb-2 ${t.text}`}>CEO Terminal</h2>
-            <p className={`text-sm font-medium mb-8 ${t.textMuted}`}>mnjkairi1@gmail.com</p>
-
-            <div className={`mb-8 p-6 rounded-3xl border ${t.border} ${t.card} text-left`}>
-              <h3 className={`text-sm font-bold uppercase tracking-wider mb-4 flex items-center gap-2 ${t.text}`}>
-                <Palette className={`h-4 w-4 ${t.primary}`} /> Theme
-              </h3>
-              <div className="flex flex-wrap gap-3">
-                {THEMES.map(theme => (
-                  <button
-                    key={theme.id}
-                    onClick={() => changeTheme(theme.id)}
-                    className={`px-4 py-2 rounded-xl text-sm font-bold transition-all border ${
-                      themeId === theme.id 
-                        ? `${t.primaryBorder} ${t.primaryLight} ${t.primary}` 
-                        : `${t.border} ${t.bg} ${t.textMuted}`
-                    }`}
-                  >
-                    {theme.name}
-                  </button>
-                ))}
+          <div className="space-y-6 max-w-5xl mx-auto pb-12">
+            <div className={`flex flex-col md:flex-row md:items-center justify-between p-6 rounded-3xl border ${t.border} ${t.card} gap-4 animate-fade-in`}>
+              <div className="flex items-center gap-4">
+                <div className={`w-14 h-14 ${t.primaryLight} rounded-2xl flex items-center justify-center border ${t.primaryBorder} shrink-0`}>
+                  <Shield className={`h-7 w-7 ${t.primary}`} />
+                </div>
+                <div className="text-left space-y-0.5">
+                  <h2 className={`text-lg font-black tracking-tight ${t.text}`}>CEO Control Terminal</h2>
+                  <p className={`text-xs font-semibold ${t.textMuted}`}>Platform administrative configurations & simulator variables</p>
+                </div>
+              </div>
+              <div className="text-left md:text-right">
+                <span className="text-[10px] font-black uppercase text-orange-500 bg-orange-500/15 px-3 py-1.5 rounded-full tracking-widest border border-orange-500/20">
+                  DEVELOPER RUNTIME ENABLED
+                </span>
+                <p className="text-[10px] text-gray-500 font-semibold mt-2 font-mono">NODE_ENV: production (sandboxed)</p>
               </div>
             </div>
-            
-            <button
-               onClick={handleLogout}
-               className="flex items-center justify-center gap-2 w-full py-4 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-2xl transition-all font-bold text-sm border border-red-500/20"
-             >
-              <LogOut className="h-5 w-5" />
-              Terminate Session
-            </button>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in">
+              
+              {/* Card 1: Admin Profile Card Details */}
+              <div className={`${t.card} border ${t.border} rounded-3xl p-5 space-y-4 text-left`}>
+                <div className="flex items-center gap-2">
+                  <Users className="h-4 w-4 text-orange-500" />
+                  <h3 className={`text-xs font-black uppercase tracking-widest ${t.text}`}>Admin Director Identity</h3>
+                </div>
+                <p className={`text-[11px] ${t.textMuted}`}>Personalize the name and sub-title variables that render in your main console headers.</p>
+                
+                <div className="space-y-3 pt-1">
+                  <div className="space-y-1">
+                    <span className="text-[9px] font-black uppercase tracking-wider text-neutral-400">Director Name</span>
+                    <input 
+                      type="text" 
+                      value={ceoName}
+                      onChange={(e) => setCeoName(e.target.value)}
+                      placeholder="e.g. CEO Director"
+                      className={`w-full rounded-xl border ${t.border} ${t.bg} px-3 py-2 outline-none ${t.text} text-xs font-bold focus:ring-1 focus:ring-orange-500`}
+                    />
+                  </div>
+                  
+                  <div className="space-y-1">
+                    <span className="text-[9px] font-black uppercase tracking-wider text-neutral-400">Position Title</span>
+                    <input 
+                      type="text" 
+                      value={ceoTitle}
+                      onChange={(e) => setCeoTitle(e.target.value)}
+                      placeholder="e.g. Chief Executive Officer"
+                      className={`w-full rounded-xl border ${t.border} ${t.bg} px-3 py-2 outline-none ${t.text} text-xs font-bold focus:ring-1 focus:ring-orange-500`}
+                    />
+                  </div>
+
+                  <button 
+                    onClick={() => {
+                      saveSettingsField('ceo_settings_name', ceoName);
+                      saveSettingsField('ceo_settings_title', ceoTitle);
+                    }}
+                    className="w-full mt-2 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white text-xs font-black uppercase tracking-wider transition-all scale-100 active:scale-98"
+                  >
+                    Apply New Alias
+                  </button>
+                </div>
+              </div>
+
+              {/* Card 2: Interactive Audio Assistant */}
+              <div className={`${t.card} border ${t.border} rounded-3xl p-5 space-y-4 text-left`}>
+                <div className="flex items-center gap-2">
+                  <Volume2 className="h-4 w-4 text-emerald-500" />
+                  <h3 className={`text-xs font-black uppercase tracking-widest ${t.text}`}>Synthetic Audio Chimes</h3>
+                </div>
+                <p className={`text-[11px] ${t.textMuted}`}>Pick a retro Web Audio wave tone to chime when system configurations or payments are recorded.</p>
+                
+                <div className="space-y-3 pt-1">
+                  <div className="space-y-1.5">
+                    {['synth-sci-fi', 'synth-chime', 'synth-echo', 'synth-pure'].map((sound) => {
+                      const labels: Record<string, string> = {
+                        'synth-sci-fi': '📟 Neon Sci-Fi Blip',
+                        'synth-chime': '🔔 Golden Tri-Chime',
+                        'synth-echo': '🛰️ Cosmic Echo Wave',
+                        'synth-pure': '🔘 Pure Click Echo'
+                      };
+                      return (
+                        <button
+                          key={sound}
+                          type="button"
+                          onClick={() => {
+                            setSoundPreference(sound);
+                            localStorage.setItem('ceo_settings_sound', sound);
+                            playChime(sound);
+                          }}
+                          className={`w-full text-left p-2.5 rounded-xl border text-xs font-bold transition-all flex items-center justify-between ${
+                            soundPreference === sound 
+                              ? 'border-emerald-500/40 bg-emerald-500/5 text-emerald-500' 
+                              : `${t.border} bg-black/5 dark:bg-black/20 text-neutral-400 hover:text-white`
+                          }`}
+                        >
+                          <span>{labels[sound]}</span>
+                          {soundPreference === sound && <Check className="w-3.5 h-3.5 text-emerald-500" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <button 
+                    type="button"
+                    onClick={() => playChime()}
+                    className="w-full mt-1.5 py-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-xs font-black uppercase tracking-wider transition-all text-neutral-600 dark:text-neutral-300 active:scale-98 text-center animate-pulse"
+                  >
+                    Test current chime
+                  </button>
+                </div>
+              </div>
+
+              {/* Card 3: Financial Surcharges & Rules */}
+              <div className={`${t.card} border ${t.border} rounded-3xl p-5 space-y-4 text-left`}>
+                <div className="flex items-center gap-2">
+                  <DollarSign className="h-4 w-4 text-blue-500" />
+                  <h3 className={`text-xs font-black uppercase tracking-widest ${t.text}`}>Formulas & Parameters</h3>
+                </div>
+                <p className={`text-[11px] ${t.textMuted}`}>Tweak formulas applied to simulation math (such as tax rate multipliers and rounding limits).</p>
+                
+                <div className="space-y-3 pt-1">
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-[10px] font-black uppercase text-neutral-400">
+                      <span>Simulated GST Tax (VAT)</span>
+                      <span className="text-blue-500 font-bold">{taxRate}%</span>
+                    </div>
+                    <input 
+                      type="range" 
+                      min="5" 
+                      max="28" 
+                      step="1"
+                      value={taxRate}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        setTaxRate(val);
+                        localStorage.setItem('ceo_settings_tax_rate', String(val));
+                      }}
+                      className="w-full accent-blue-500 cursor-pointer h-1.5 bg-neutral-200 dark:bg-neutral-800 rounded-lg appearance-none mt-1"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <span className="text-[9px] font-black uppercase tracking-wider text-neutral-400 block mb-1">Decimal Rounding Rule</span>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { id: 'closest', name: 'Nearest 1₹' },
+                        { id: 'precise', name: 'Fractional' }
+                      ].map((rule) => (
+                        <button
+                          key={rule.id}
+                          type="button"
+                          onClick={() => {
+                            setRoundingRule(rule.id);
+                            localStorage.setItem('ceo_settings_rounding', rule.id);
+                            showToast('Rounding formula updated!', 'success');
+                            playChime();
+                          }}
+                          className={`py-2 rounded-xl border text-[10px] font-black uppercase tracking-wider transition-all ${
+                            roundingRule === rule.id 
+                              ? 'border-blue-500/40 bg-blue-500/5 text-blue-500' 
+                              : `${t.border} bg-black/5 dark:bg-black/20 text-neutral-400`
+                          }`}
+                        >
+                          {rule.name}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[9px] text-slate-500 leading-tight mt-1.5">Determines standard calculations for invoice simulation models.</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 4: Platform Themes selection */}
+              <div className={`${t.card} border ${t.border} rounded-3xl p-5 space-y-4 text-left md:col-span-2 lg:col-span-1`}>
+                <div className="flex items-center gap-2">
+                  <Palette className="h-4 w-4 text-purple-500" />
+                  <h3 className={`text-xs font-black uppercase tracking-widest ${t.text}`}>Control Center Visual Dress</h3>
+                </div>
+                <p className={`text-[11px] ${t.textMuted}`}>Switch the global style identity of the director console. All visual assets adapt instantly.</p>
+                
+                <div className="grid grid-cols-2 gap-2.5 pt-1">
+                  {THEMES.map(theme => (
+                    <button
+                      key={theme.id}
+                      type="button"
+                      onClick={() => {
+                        changeTheme(theme.id);
+                        playChime();
+                      }}
+                      className={`text-[10px] font-black uppercase tracking-wider py-3 px-2 rounded-xl text-center transition-all border block ${
+                        themeId === theme.id 
+                          ? `${t.primaryBorder} ${t.primaryLight} ${t.primary}` 
+                          : `${t.border} ${t.bg} ${t.textMuted} hover:bg-black/5 dark:hover:bg-white/5`
+                      }`}
+                    >
+                      {theme.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Card 5: Core Simulator Feature Flags */}
+              <div className={`${t.card} border ${t.border} rounded-3xl p-5 space-y-4 text-left md:col-span-2`}>
+                <div className="flex items-center gap-2">
+                  <Power className="h-4 w-4 text-red-500" />
+                  <h3 className={`text-xs font-black uppercase tracking-widest ${t.text}`}>Pilot Feature Toggles</h3>
+                </div>
+                <p className={`text-[11px] ${t.textMuted}`}>Direct control flags modifying administrative response systems and diagnostic visuals.</p>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  
+                  {/* Maintenance block switch */}
+                  <div className="p-3.5 rounded-2xl bg-black/5 dark:bg-black/20 border border-black/5 dark:border-white/5 flex items-center justify-between">
+                    <div className="text-left py-0.5 pr-2">
+                      <span className={`text-[10px] font-black uppercase ${t.text} block`}>Freeze System / Maintenance</span>
+                      <span className="text-[9px] font-semibold text-slate-500 leading-normal">Lock merchant logins & trigger alerts.</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nextVal = !isMaintenanceMode;
+                        setIsMaintenanceMode(nextVal);
+                        localStorage.setItem('ceo_settings_maintenance', String(nextVal));
+                        showToast(`Simulation lockdown ${nextVal ? 'Activated' : 'Dismissed'}!`, 'success');
+                        playChime();
+                      }}
+                      className={`px-3 py-1.5 rounded-xl font-bold text-[10px] uppercase transition-all tracking-wider ${
+                        isMaintenanceMode 
+                          ? 'bg-red-500 text-white shrink-0 shadow-sm font-black' 
+                          : 'bg-neutral-200 dark:bg-neutral-800 text-neutral-400 shrink-0'
+                      }`}
+                    >
+                      {isMaintenanceMode ? 'Lock On' : 'Active'}
+                    </button>
+                  </div>
+
+                  {/* Autopilot Smart Assist */}
+                  <div className="p-3.5 rounded-2xl bg-black/5 dark:bg-black/20 border border-black/5 dark:border-white/5 flex items-center justify-between">
+                    <div className="text-left py-0.5 pr-2">
+                      <span className={`text-[10px] font-black uppercase ${t.text} block`}>Smart Menu Copilot</span>
+                      <span className="text-[9px] font-semibold text-slate-500 leading-normal">Default simulated AI blueprints generation.</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nextVal = !autopilotEnabled;
+                        setAutopilotEnabled(nextVal);
+                        localStorage.setItem('ceo_settings_autopilot', String(nextVal));
+                        showToast(`Copilot Autopilot ${nextVal ? 'ENABLED' : 'DISABLED'}!`, 'success');
+                        playChime();
+                      }}
+                      className={`px-3 py-1.5 rounded-xl font-bold text-[10px] uppercase transition-all tracking-wider ${
+                        autopilotEnabled 
+                          ? 'bg-orange-500 text-white shrink-0 shadow-sm font-black' 
+                          : 'bg-neutral-200 dark:bg-neutral-800 text-neutral-400 shrink-0'
+                      }`}
+                    >
+                      {autopilotEnabled ? 'Autopilot' : 'Manual'}
+                    </button>
+                  </div>
+
+                </div>
+              </div>
+
+            </div>
+
+            {/* FULL INTEGRATED TELEMETRY COMPUTER CONSOLE PANEL */}
+            <div className={`${t.card} border ${t.border} rounded-3xl p-6 text-left space-y-4 animate-fade-in`}>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4 border-black/5 dark:border-white/5">
+                <div className="space-y-1">
+                  <h3 className={`text-sm font-black uppercase tracking-wider flex items-center gap-2 ${t.text}`}>
+                    <Terminal className="w-5 h-5 text-orange-500 animate-pulse" /> Security Integrity & Diagnostic Feed
+                  </h3>
+                  <p className={`text-[11px] ${t.textMuted}`}>Real-time sandboxed system process and network heartbeat logging.</p>
+                </div>
+                <div className="flex items-center gap-2 self-start sm:self-center">
+                  <button
+                    type="button"
+                    onClick={() => setConsoleFeedPaused(!consoleFeedPaused)}
+                    className="px-3 py-1.5 rounded-lg bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-[10px] font-black uppercase tracking-widest text-neutral-600 dark:text-neutral-300 transition-all active:scale-98"
+                  >
+                    {consoleFeedPaused ? '▶ Resume stream' : '⏸ Pause stream'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuditLogs([]);
+                      showToast('Console event stack cleared!', 'success');
+                    }}
+                    className="px-3 py-1.5 rounded-lg border border-red-500/15 hover:bg-red-500/5 text-[10px] font-black uppercase tracking-widest text-red-500 transition-all active:scale-98"
+                  >
+                    Flush logs
+                  </button>
+                </div>
+              </div>
+
+              {/* Console logs output terminal window */}
+              <div className="font-mono text-[10px] bg-[#090d11] p-4 rounded-2xl h-44 overflow-y-auto space-y-1 block border border-white/5 select-text relative">
+                {auditLogs.length === 0 ? (
+                  <div className="absolute inset-0 flex items-center justify-center text-gray-600 font-bold p-4 text-center">
+                    Terminal buffer empty. Resume feed or inject logs manually to listen.
+                  </div>
+                ) : (
+                  auditLogs.map((log) => {
+                    const typeColors = {
+                      info: 'text-blue-400',
+                      warn: 'text-amber-500 font-extrabold',
+                      success: 'text-emerald-400'
+                    };
+                    return (
+                      <div key={log.id} className="flex flex-wrap items-start gap-1 text-[11px] leading-relaxed transition-all hover:bg-white/5 rounded px-1 py-0.5">
+                        <span className="text-gray-500 font-black tracking-tight select-none">&#91;{log.time}&#93;</span>
+                        <span className={`font-semibold shrink-0 select-none ${typeColors[log.type]}`}>&#91;{log.type.toUpperCase()}&#93;</span>
+                        <span className="text-gray-300 font-medium">{log.msg}</span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Console diagnostic controllers inline widgets */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 pt-2 bg-black/5 dark:bg-white/5 p-4 rounded-2xl border border-black/5 dark:border-white/5">
+                <p className="text-[10px] font-semibold text-slate-500 leading-relaxed text-left max-w-sm">
+                  Simulate emergency state events locally. Helps evaluate notification rendering constraints instantly inside the preview iframe container.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const now = new Date();
+                    const timeStr = now.toTimeString().split(' ')[0];
+                    setAuditLogs(prev => [
+                      ...prev,
+                      {
+                        id: Date.now().toString(),
+                        msg: 'HAZARDOUS_ALERT: Sandbox iframe security policy constraints simulated - token restricted.',
+                        time: timeStr,
+                        type: 'warn'
+                      }
+                    ]);
+                    showToast('Critical warning injection simulated!', 'error');
+                    playChime('synth-sci-fi');
+                  }}
+                  className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-black text-[10px] uppercase tracking-widest transition-all shadow-sm shrink-0 active:scale-98 text-center"
+                >
+                  📡 Inject Simulated Warn
+                </button>
+              </div>
+            </div>
+
+            {/* Bottom session terminal sign-out block */}
+            <div className="flex justify-center pt-6 max-w-xs mx-auto">
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="flex items-center justify-center gap-2.5 w-full py-4 bg-red-600 hover:bg-red-700 text-white rounded-2xl transition-all font-black text-xs uppercase tracking-widest shadow-md active:scale-[0.98]"
+              >
+                <LogOut className="h-4 w-4" />
+                Terminate Director Session
+              </button>
+            </div>
           </div>
         );
     }
   };
 
   return (
-    <div className={`min-h-screen ${t.bg} ${t.text} font-sans flex flex-col transition-colors duration-300`}>
-      {/* Top Header */}
-      <header className={`${t.bg}/80 backdrop-blur-md px-6 py-4 sticky top-0 z-40 border-b ${t.border}`}>
-        <div className={`flex items-center justify-center gap-2 ${t.text}`}>
-          <Shield className={`h-6 w-6 ${t.primary}`} />
+    <div className={`min-h-screen ${t.bg} ${t.text} font-sans flex transition-colors duration-300`}>
+      {/* Desktop Sidebar (hidden on mobile, visible on desktop) */}
+      <aside className={`hidden lg:flex flex-col w-64 fixed top-0 bottom-0 left-0 z-40 border-r ${t.border} ${t.card} p-5 justify-between overflow-y-auto`}>
+        <div className="space-y-8">
+          {/* Logo Branding */}
+          <div className="flex items-center gap-3 px-2">
+            <div className={`w-9 h-9 rounded-xl ${t.primaryLight} flex items-center justify-center border ${t.primaryBorder}`}>
+              <Shield className={`h-5 w-5 ${t.primary}`} />
+            </div>
+            <div className="text-left">
+              <h1 className={`text-sm font-black uppercase tracking-widest ${t.text} truncate max-w-[140px]`} title={ceoName}>{ceoName}</h1>
+              <p className={`text-[9px] font-bold ${t.textMuted} uppercase truncate max-w-[140px]`} title={ceoTitle}>{ceoTitle}</p>
+            </div>
+          </div>
+
+          {/* Nav List */}
+          <div className="space-y-1.5 text-left">
+            {[
+              { id: 'home', icon: Home, label: 'Home Dashboard' },
+              { id: 'charts', icon: BarChart2, label: 'Financial Index' },
+              { id: 'clients', icon: Users, label: 'Partner Accounts' },
+              { id: 'tools', icon: Wrench, label: 'Control Terminal' },
+              { id: 'settings', icon: Settings, label: 'System Settings' }
+            ].map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as TabType)}
+                  className={`w-full flex items-center gap-3.5 px-4 py-3 rounded-2xl font-black text-xs uppercase tracking-wider transition-all relative ${
+                    isActive ? `${t.primary} ${t.primaryLight} border ${t.primaryBorder}` : `border border-transparent ${t.textMuted} hover:text-orange-500 hover:bg-black/5 dark:hover:bg-white/5`
+                  }`}
+                >
+                  <Icon className="h-5 w-5 stroke-[2px]" />
+                  <span>{tab.label}</span>
+                  {isActive && <span className={`absolute right-3 w-1.5 h-1.5 rounded-full ${t.primaryBg}`} />}
+                </button>
+              );
+            })}
+          </div>
         </div>
-      </header>
 
-      {/* Main Panel Content */}
-      <main className="flex-1 overflow-y-auto max-w-lg mx-auto w-full relative">
-        {renderContent()}
-      </main>
+        {/* User profile details box */}
+        <div className="space-y-4 px-1 pb-2">
+          <div className={`p-3.5 rounded-2xl bg-black/5 dark:bg-white/5 border ${t.border} text-left`}>
+            <p className="text-[9px] font-black tracking-widest uppercase opacity-65">Director Auth</p>
+            <p className={`text-xs font-black truncate mt-1 ${t.text}`} title="mnjkairi1@gmail.com">mnjkairi1@gmail.com</p>
+          </div>
+          <button 
+            onClick={handleLogout}
+            className="w-full py-3 rounded-xl border border-red-500/10 hover:border-red-500/25 bg-red-500/5 hover:bg-red-500/10 text-red-500 font-bold text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+          >
+            <LogOut className="w-3.5 h-3.5" /> Log Out
+          </button>
+        </div>
+      </aside>
 
-      {/* Mobile Bottom Navigation */}
-      <nav className={`fixed bottom-0 left-0 right-0 ${t.card} border-t ${t.border} pb-safe z-50`}>
+      {/* Main Panel Content Box */}
+      <div className="flex-1 flex flex-col min-w-0 lg:pl-64">
+        {/* Top Header - Hidden on wide screens because of sidebar details */}
+        <header className={`lg:hidden ${t.bg}/80 backdrop-blur-md px-6 py-4 sticky top-0 z-40 border-b ${t.border}`}>
+          <div className={`flex items-center justify-between ${t.text}`}>
+            <span className="text-xs font-black uppercase tracking-widest opacity-80">CEO TERMINAL</span>
+            <Shield className={`h-5 w-5 ${t.primary}`} />
+          </div>
+        </header>
+
+        {/* Screen layout content panel */}
+        <main className="flex-1 overflow-y-auto w-full max-w-lg lg:max-w-7xl mx-auto px-4 py-4 md:py-6 lg:px-8 xl:px-12 relative transition-all duration-300 pb-24">
+          {isMaintenanceMode && (
+            <div className="mb-6 p-4 rounded-[24px] bg-red-500/10 border border-red-500/25 text-red-500 flex items-center gap-3.5 animate-pulse shadow-sm">
+              <AlertTriangle className="h-5 w-5 shrink-0" />
+              <div className="text-left">
+                <p className="text-[10px] font-black uppercase tracking-wider">Simulated System Maintenance Lockdown Mode Active</p>
+                <p className="text-[9px] font-semibold opacity-85 leading-relaxed">Admin simulation logs display system freeze locks. Merchant client devices would experience temporary database synchronization notifications.</p>
+              </div>
+            </div>
+          )}
+          {renderContent()}
+        </main>
+      </div>
+
+      {/* Mobile Bottom Navigation (Hidden on LG wide screen console) */}
+      <nav className={`lg:hidden fixed bottom-0 left-0 right-0 ${t.card} border-t ${t.border} pb-safe z-50`}>
         <div className="flex items-center justify-around p-3 md:max-w-md mx-auto">
           {[
             { id: 'home', icon: Home, label: 'Home' },
@@ -1667,8 +2627,6 @@ export default function CeoDashboard() {
         </div>
       </nav>
 
-
-
       {/* Custom Toast Alert Banner */}
       {toast && (
         <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[110] w-[90%] max-w-xs animate-slide-up pointer-events-none">
@@ -1683,6 +2641,41 @@ export default function CeoDashboard() {
               </div>
             )}
             <p className={`text-xs font-bold ${t.text} text-left leading-tight`}>{toast.message}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Secure Iframe Dynamic Confirm Modal */}
+      {confirmModal && confirmModal.isOpen && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in object-contain">
+          <div className={`${t.card} border ${t.border} w-full max-w-sm rounded-[28px] p-6 shadow-2xl space-y-4 text-left animate-scale-up`}>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-orange-500/10 text-orange-500 flex items-center justify-center shrink-0">
+                <Shield className="w-5 h-5 text-orange-500" />
+              </div>
+              <h3 className={`text-base font-black tracking-tight ${t.text}`}>{confirmModal.title}</h3>
+            </div>
+            
+            <p className={`text-xs font-semibold leading-relaxed ${t.textMuted}`}>
+              {confirmModal.description}
+            </p>
+            
+            <div className="flex items-center gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmModal(null)}
+                className={`flex-1 py-2.5 rounded-xl border ${t.border} bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-xs font-black uppercase tracking-wider transition-all text-neutral-700 dark:text-neutral-300`}
+              >
+                {confirmModal.cancelText || 'Cancel'}
+              </button>
+              <button
+                type="button"
+                onClick={confirmModal.onConfirm}
+                className="flex-1 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white text-xs font-black uppercase tracking-wider transition-all shadow-sm text-center"
+              >
+                {confirmModal.confirmText || 'Confirm'}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -3,7 +3,7 @@ import { db, auth } from '../lib/firebase';
 import { collection, getDocs, updateDoc, doc, addDoc, serverTimestamp, query, where } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { useNavigate } from 'react-router-dom';
-import { Shield, Users, LogOut, DollarSign, Activity, AlertCircle, Home, BarChart2, Settings, Power, Edit2, CheckCircle2, Palette, History, Wrench, MessageSquare, Send, X, PlusCircle, Sparkles, Search, Megaphone, ArrowLeft, Check, HelpCircle, Bell, AlertTriangle, CreditCard, ChevronRight, Layers } from 'lucide-react';
+import { Shield, Users, LogOut, DollarSign, Activity, AlertCircle, Home, BarChart2, Settings, Power, Edit2, CheckCircle2, Palette, History, Wrench, MessageSquare, Send, X, PlusCircle, Sparkles, Search, Megaphone, ArrowLeft, Check, HelpCircle, Bell, AlertTriangle, CreditCard, ChevronRight, Layers, Globe } from 'lucide-react';
 import { startOfMonth, endOfMonth, isWithinInterval, startOfYear, endOfYear, format } from 'date-fns';
 import { Restaurant } from '../types';
 import SleekLoader from '../components/SleekLoader';
@@ -74,15 +74,7 @@ export default function CeoDashboard() {
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
   const [clientStats, setClientStats] = useState<Record<string, { monthlyEarning: number, isLoading: boolean }>>({});
 
-  // Beautiful Custom Non-Blocking Confirms & Alerts for iFrames
-  const [confirmModal, setConfirmModal] = useState<{
-    isOpen: boolean;
-    title: string;
-    message: string;
-    actionText: string;
-    onConfirm: () => void | Promise<void>;
-    colorTheme?: 'danger' | 'primary' | 'success';
-  } | null>(null);
+
 
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
@@ -182,34 +174,34 @@ export default function CeoDashboard() {
 
     if (itemsToInject.length === 0) return;
 
-    setConfirmModal({
-      isOpen: true,
-      title: "Inject Starter Catalog Blueprint",
-      message: `Would you like to instantly auto-populate 5 premium starter items for "${presetType}" to kickstart the system search catalog?`,
-      actionText: "Inject Now",
-      colorTheme: "success",
-      onConfirm: async () => {
-        try {
-          await Promise.all(itemsToInject.map(item => 
-            addDoc(collection(db, 'menuItems'), {
-              restaurantId: selectedToolsClient,
-              businessType: customBusinessType,
-              name: item.name,
-              price: item.price,
-              category: item.category,
-              isAvailable: true,
-              stockCount: 100,
-              createdAt: serverTimestamp()
-            })
-          ));
-          showToast('Blueprint template injected successfully!', 'success');
-        } catch (err) {
-          console.error(err);
-          showToast('Failed to inject template', 'error');
-        }
-        setConfirmModal(null);
+    let confirmed = false;
+    try {
+      confirmed = window.confirm(`Would you like to instantly auto-populate 5 premium starter items for "${presetType}" to kickstart the system search catalog?`);
+    } catch (e) {
+      // Robust sandbox fallback
+      confirmed = true;
+    }
+
+    if (confirmed) {
+      try {
+        await Promise.all(itemsToInject.map(item => 
+          addDoc(collection(db, 'menuItems'), {
+            restaurantId: selectedToolsClient,
+            businessType: customBusinessType,
+            name: item.name,
+            price: item.price,
+            category: item.category,
+            isAvailable: true,
+            stockCount: 100,
+            createdAt: serverTimestamp()
+          })
+        ));
+        showToast('Blueprint template injected successfully!', 'success');
+      } catch (err) {
+        console.error(err);
+        showToast('Failed to inject template', 'error');
       }
-    });
+    }
   };
 
   const loadClientStats = async (restId: string) => {
@@ -384,29 +376,29 @@ export default function CeoDashboard() {
 
   const handleLogout = () => signOut(auth).then(() => navigate('/'));
 
-   const toggleRestaurantBlock = (id: string, currentlyBlocked: boolean) => {
+   const toggleRestaurantBlock = async (id: string, currentlyBlocked: boolean) => {
+    let confirmed = false;
     const confirmMsg = currentlyBlocked 
-      ? "They and their staff will regain immediate full access to the application." 
-      : "They and their staff won't be able to use the app or access any features until unblocked.";
+      ? "Unblock this business? They and their staff will regain immediate full access." 
+      : "Block this business? They and their staff won't be able to log in or use the app.";
     
-    setConfirmModal({
-      isOpen: true,
-      title: currentlyBlocked ? "Unblock this business?" : "Block this business?",
-      message: confirmMsg,
-      actionText: currentlyBlocked ? "Unblock Now" : "Block Business",
-      colorTheme: currentlyBlocked ? "success" : "danger",
-      onConfirm: async () => {
-        try {
-           await updateDoc(doc(db, 'restaurants', id), { isBlocked: !currentlyBlocked });
-           setRestaurants(prev => prev.map(r => r.id === id ? { ...r, isBlocked: !currentlyBlocked } : r));
-           showToast(`Business is now ${currentlyBlocked ? 'Active' : 'Blocked'} successfully!`, 'success');
-        } catch (err) {
-           console.error("Failed to update status", err);
-           showToast("Failed to update status", 'error');
-        }
-        setConfirmModal(null);
+    try {
+      confirmed = window.confirm(confirmMsg);
+    } catch (e) {
+      // Robust fallback for sandboxed iframes where native dialogs are deactivated
+      confirmed = true;
+    }
+
+    if (confirmed) {
+      try {
+         await updateDoc(doc(db, 'restaurants', id), { isBlocked: !currentlyBlocked });
+         setRestaurants(prev => prev.map(r => r.id === id ? { ...r, isBlocked: !currentlyBlocked } : r));
+         showToast(`Business is now ${currentlyBlocked ? 'Active' : 'Blocked'} successfully!`, 'success');
+      } catch (err) {
+         console.error("Failed to update status", err);
+         showToast("Failed to update status", 'error');
       }
-    });
+    }
   };
 
   const saveFee = async (id: string) => {
@@ -426,32 +418,31 @@ export default function CeoDashboard() {
     }
   };
 
-  const markPaid = (rest: Restaurant) => {
+  const markPaid = async (rest: Restaurant) => {
     const fee = rest.subscriptionFee || 1000;
-    
-    setConfirmModal({
-      isOpen: true,
-      title: "Record Subscription Payment",
-      message: `Confirm that you've received ₹${fee} subscription fee for the current billing cycle from ${rest.name}?`,
-      actionText: "Record Paid",
-      colorTheme: "success",
-      onConfirm: async () => {
-        try {
-          const newPay = {
-            restaurantId: rest.id,
-            amount: fee,
-            createdAt: serverTimestamp()
-          };
-          const docRef = await addDoc(collection(db, 'platformPayments'), newPay);
-          setPayments(prev => [...prev, { id: docRef.id, ...newPay, createdAt: { toDate: () => new Date() } }]);
-          showToast(`Recorded payment of ₹${fee} for ${rest.name}!`, 'success');
-        } catch (err) {
-          console.error("Payment recording failed", err);
-          showToast("Failed to record payment", 'error');
-        }
-        setConfirmModal(null);
+    let confirmed = false;
+    try {
+      confirmed = window.confirm(`Record ₹${fee} payment for ${rest.name}?`);
+    } catch (e) {
+      // Robust fallback for sandboxed iframe
+      confirmed = true;
+    }
+
+    if (confirmed) {
+      try {
+        const newPay = {
+          restaurantId: rest.id,
+          amount: fee,
+          createdAt: serverTimestamp()
+        };
+        const docRef = await addDoc(collection(db, 'platformPayments'), newPay);
+        setPayments(prev => [...prev, { id: docRef.id, ...newPay, createdAt: { toDate: () => new Date() } }]);
+        showToast(`Recorded payment of ₹${fee} for ${rest.name}!`, 'success');
+      } catch (err) {
+        console.error("Payment recording failed", err);
+        showToast("Failed to record payment", 'error');
       }
-    });
+    }
   };
 
   const { totalEarnings, monthlyEarnings, yearlyEarnings, chartData } = useMemo(() => {
@@ -527,7 +518,7 @@ export default function CeoDashboard() {
         const paidThisMonthCount = restaurants.filter(r => hasPaidThisMonth(r.id)).length;
         const unpaidRests = restaurants.filter(r => !hasPaidThisMonth(r.id));
         
-        // Filter partners list by lookup string and optional category filter on home page
+        // Filter business partners list by lookup string and optional category filter
         const homeFilteredRests = restaurants.filter(r => {
           const matchQuery = (r.name || '').toLowerCase().includes(homeSearchQuery.toLowerCase()) || 
                              (r.ownerEmail || '').toLowerCase().includes(homeSearchQuery.toLowerCase());
@@ -578,109 +569,130 @@ export default function CeoDashboard() {
         };
 
         return (
-          <div className="space-y-6 p-4 pb-24">
-            {/* Header branding block */}
-            <div className="flex items-center justify-between">
-              <div className="text-left">
-                <span className={`text-[9px] font-black uppercase tracking-widest ${t.primary} bg-orange-500/10 px-2.5 py-1 rounded-full ${t.primaryLight}`}>
-                  Elite Admin Center
-                </span>
-                <h2 className={`text-xl font-black mt-2 ${t.text}`}>Platform Overview</h2>
+          <div className="space-y-6 p-4 pb-24 text-left">
+            {/* CEO Personalized Welcome Panel */}
+            <div className="rounded-3xl p-6 bg-gradient-to-br from-orange-600 via-orange-500 to-amber-500 text-white shadow-lg space-y-4 relative overflow-hidden">
+              <div className="absolute top-0 right-0 translate-x-4 -translate-y-4 opacity-15 pointer-events-none">
+                <Shield className="w-40 h-40" />
               </div>
-              <div className="relative">
-                <span className="flex h-3 w-3 absolute -right-0.5 -top-0.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-orange-500"></span>
-                </span>
-                <div className={`p-2.5 rounded-2xl bg-black/5 dark:bg-white/5 border ${t.border}`}>
-                  <Bell className={`h-4.5 w-4.5 ${t.text}`} />
+
+              <div className="space-y-1 relative z-10">
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px] font-black uppercase tracking-widest bg-white/20 px-2.5 py-1 rounded-full text-white">
+                    System Director
+                  </span>
+                  <span className="flex h-2 w-2 relative">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
+                  </span>
+                  <span className="text-[10px] font-bold text-white/90">Main Database Connected</span>
+                </div>
+                <h2 className="text-2xl font-black tracking-tight mt-1">Hello, mnjkairi1</h2>
+                <p className="text-xs font-semibold text-white/80">Supreme Owner Panel: mnjkairi1@gmail.com</p>
+              </div>
+
+              <div className="h-px bg-white/15 w-full my-1.5" />
+
+              <div className="flex justify-between items-center text-xs font-bold text-orange-50 relative z-10">
+                <div className="space-y-0.5">
+                  <p className="text-[10px] opacity-75 uppercase tracking-wider">Active Region</p>
+                  <p className="font-extrabold text-sm flex items-center gap-1 text-white">
+                    <Globe className="w-4 h-4 text-orange-200" /> Multi-Tenant Host
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] opacity-75 uppercase tracking-wider">Local Instance Date</p>
+                  <p className="font-extrabold text-white text-sm">
+                    {format(new Date(), "MMMM dd, yyyy")}
+                  </p>
                 </div>
               </div>
             </div>
 
-            {/* Financial Performance Grid */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm text-left relative overflow-hidden group`}>
-                <div className="absolute right-0 bottom-0 translate-y-2 translate-x-2 text-neutral-100 dark:text-neutral-800 opacity-20 pointer-events-none transition-transform group-hover:scale-110">
-                  <DollarSign className="w-24 h-24 stroke-[1.5]" />
+            {/* Platform Metrics Hub */}
+            <div>
+              <h3 className={`text-[11px] font-black uppercase tracking-widest ${t.textMuted} mb-3 ml-1`}>
+                Enterprise Financial & Billing Overview
+              </h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm relative overflow-hidden group flex flex-col justify-between h-[110px]`}>
+                  <div>
+                    <p className={`text-[10px] font-bold tracking-wider uppercase mb-1 ${t.textMuted}`}>Platform Revenue</p>
+                    <h3 className={`text-2xl font-black ${t.text}`}>₹{totalEarnings.toLocaleString()}</h3>
+                  </div>
+                  <p className={`text-[9.5px] font-semibold ${t.textMuted} opacity-80`}>Lifetime collections</p>
                 </div>
-                <p className={`text-[10px] font-bold tracking-wider uppercase mb-1.5 ${t.textMuted}`}>Platform Revenue</p>
-                <h3 className={`text-2xl font-black ${t.text}`}>₹{totalEarnings.toLocaleString()}</h3>
-                <p className={`text-[9.5px] font-medium mt-1 ${t.textMuted}`}>All-time accumulated subscription receipts</p>
-              </div>
 
-              <div className={`${t.primaryLight} rounded-3xl p-5 border ${t.primaryBorder} shadow-sm text-left relative overflow-hidden group`}>
-                <div className="absolute right-0 bottom-0 translate-y-2 translate-x-2 text-orange-500/10 pointer-events-none transition-transform group-hover:scale-110">
-                  <Activity className="w-24 h-24 stroke-[1.5]" />
+                <div className={`${t.primaryLight} rounded-3xl p-5 border ${t.primaryBorder} shadow-sm relative overflow-hidden group flex flex-col justify-between h-[110px]`}>
+                  <div>
+                    <p className={`text-[10px] font-bold tracking-wider uppercase mb-1 ${t.primary}`}>Monthly Revenue</p>
+                    <h3 className={`text-2xl font-black ${t.primary}`}>₹{monthlyEarnings.toLocaleString()}</h3>
+                  </div>
+                  <p className={`text-[9.5px] font-semibold ${t.primary} opacity-80`}>This billing cycle</p>
                 </div>
-                <p className={`text-[10px] font-bold tracking-wider uppercase mb-1.5 ${t.primary}`}>Monthly Inflow</p>
-                <h3 className={`text-2xl font-black ${t.primary}`}>₹{monthlyEarnings.toLocaleString()}</h3>
-                <p className={`text-[9.5px] font-medium mt-1 ${t.primary} opacity-80`}>Collected during this billing cycle</p>
+
+                <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm flex flex-col justify-between h-[105px]`}>
+                  <div>
+                    <p className={`text-[10px] font-bold tracking-wider uppercase mb-1 ${t.textMuted}`}>Active Accounts</p>
+                    <h4 className={`text-2xl font-black ${t.text}`}>{restaurants.length}</h4>
+                  </div>
+                  <p className="text-[9.5px] font-bold text-emerald-500 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> live clients on platform
+                  </p>
+                </div>
+
+                <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm flex flex-col justify-between h-[105px]`}>
+                  <div>
+                    <p className={`text-[10px] font-bold tracking-wider uppercase mb-1 ${t.textMuted}`}>Monthly Billing Ratio</p>
+                    <h4 className={`text-2xl font-black ${t.text}`}>{paidThisMonthCount} <span className="text-xs text-slate-500 font-bold">/ {restaurants.length}</span></h4>
+                  </div>
+                  <div className="w-full bg-neutral-200 dark:bg-neutral-800 h-1 rounded-full overflow-hidden">
+                    <div 
+                      className="bg-emerald-500 h-full rounded-full transition-all" 
+                      style={{ width: `${Math.round((paidThisMonthCount / (restaurants.length || 1)) * 100)}%` }}
+                    />
+                  </div>
+                </div>
               </div>
             </div>
-            
-            {/* User Counters */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm text-left`}>
-                <div className="flex items-center justify-between mb-2">
-                  <span className={`text-[10px] font-black uppercase tracking-wider ${t.textMuted}`}>Active Accounts</span>
-                  <Users className={`h-5 w-5 ${t.primary}`} />
-                </div>
-                <h4 className={`text-2xl font-black ${t.text}`}>{restaurants.length}</h4>
-                <p className={`text-[9.5px] font-semibold mt-1 text-emerald-500`}>● Live partners connected</p>
-              </div>
-              <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm text-left`}>
-                <div className="flex items-center justify-between mb-2">
-                  <span className={`text-[10px] font-black uppercase tracking-wider ${t.textMuted}`}>Billing Ratio</span>
-                  <CheckCircle2 className={`h-5 w-5 ${t.primary}`} />
-                </div>
-                <h4 className={`text-2xl font-black ${t.text}`}>{paidThisMonthCount} <span className={`text-sm ${t.textMuted}`}>/ {restaurants.length}</span></h4>
-                <p className={`text-[9.5px] font-semibold mt-1 ${t.textMuted}`}>
-                  {Math.round((paidThisMonthCount / (restaurants.length || 1)) * 100)}% cycle achievement
-                </p>
-              </div>
-            </div>
 
-            {/* Quick Action Payment Reminders (Action Dues Card) */}
+            {/* Quick Action Pending Dues Panel */}
             {unpaidRests.length > 0 ? (
-              <div className="border border-amber-200/60 dark:border-amber-900/40 bg-amber-500/5 rounded-3xl p-5 text-left space-y-4">
+              <div className="border border-amber-200/60 dark:border-amber-900/40 bg-amber-500/5 rounded-3xl p-5 space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <AlertTriangle className="h-5 w-5 text-amber-500" />
                     <div>
-                      <h3 className={`text-sm font-black ${t.text}`}>Pending Billing Action ({unpaidRests.length})</h3>
-                      <p className="text-[10px] text-amber-600/90 font-medium">Partners who have not completed payment this month</p>
+                      <h3 className={`text-xs font-black uppercase text-amber-500`}>Awaiting Payments ({unpaidRests.length})</h3>
+                      <p className="text-[10.5px] text-amber-600/90 font-medium">Partners with due subscription premium fee for current month</p>
                     </div>
                   </div>
-                  <span className="text-[9px] font-bold uppercase py-0.5 px-2 bg-amber-500/10 text-amber-600 rounded">
-                    Action required
-                  </span>
                 </div>
 
-                <div className="space-y-2 max-h-[190px] overflow-y-auto pr-1">
+                <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
                   {unpaidRests.map(r => (
-                    <div key={r.id} className={`${t.card} rounded-2xl p-3 border ${t.border} flex items-center justify-between gap-2`}>
+                    <div key={r.id} className={`${t.card} rounded-2xl p-3 border ${t.border} flex items-center justify-between gap-3`}>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
                           <p className={`text-xs font-black truncate ${t.text}`}>{r.name}</p>
-                          <span className="text-[8px] font-extrabold uppercase bg-neutral-100 dark:bg-neutral-800 text-neutral-500 px-1.5 py-0.5 rounded">
+                          <span className="text-[8px] font-black uppercase bg-neutral-100 dark:bg-neutral-800 text-neutral-500 px-1.5 py-0.5 rounded">
                             {r.businessType || 'Store'}
                           </span>
                         </div>
-                        <p className={`text-[10px] ${t.textMuted} font-semibold`}>Rate: ₹{r.subscriptionFee || 1000}/mo</p>
+                        <p className={`text-[10px] ${t.textMuted} font-semibold mt-0.5`}>Monthly rate: ₹{r.subscriptionFee || 1000}</p>
                       </div>
 
-                      <div className="flex items-center gap-1.5 flex-none">
+                      <div className="flex items-center gap-2 flex-none">
                         <button
                           title="Broadcast a warning banner on their dashboard screen instantly"
                           onClick={() => sendPaymentDuesReminder(r)}
-                          className="px-2.5 py-1.5 rounded-xl border border-orange-500/20 text-orange-500 hover:bg-orange-500/10 font-black text-[9px] uppercase tracking-wider transition-all"
+                          className="px-2.5 py-1.5 rounded-xl border border-orange-500/20 text-orange-500 hover:bg-orange-500/10 font-bold text-[9px] uppercase tracking-wider transition-all"
                         >
-                          Alert Banner
+                          Send Alert
                         </button>
                         <button
                           onClick={() => markPaid(r)}
-                          className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-black text-[9px] uppercase tracking-wider transition-all flex items-center gap-1"
+                          className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-[9px] uppercase tracking-wider transition-all"
                         >
                           Mark Paid
                         </button>
@@ -690,30 +702,26 @@ export default function CeoDashboard() {
                 </div>
               </div>
             ) : (
-              <div className="border border-emerald-500/15 bg-emerald-500/5 rounded-3xl p-5 text-left flex items-center gap-3">
+              <div className="border border-emerald-500/15 bg-emerald-500/5 rounded-3xl p-5 flex items-center gap-3">
                 <Check className="w-8 h-8 text-emerald-500 bg-emerald-500/10 p-1.5 rounded-2xl" />
                 <div>
-                  <h4 className={`text-xs font-black ${t.text}`}>Perfect Financial Health</h4>
-                  <p className={`text-[10px] ${t.textMuted}`}>All registered business accounts are fully paid for the current month.</p>
+                  <h4 className={`text-xs font-black uppercase text-emerald-600`}>Perfect Billing Record</h4>
+                  <p className={`text-[10px] ${t.textMuted}`}>All platform clients are fully paid up for this cycle!</p>
                 </div>
               </div>
             )}
 
-            {/* Premium Live Client Search & Quick Operations Grid */}
-            <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm text-left space-y-4`}>
+            {/* Smart Control Center (Clients Search & Setup Command) */}
+            <div className={`${t.card} rounded-3xl p-5 border ${t.border} shadow-sm space-y-4`}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Search className={`h-5 w-5 ${t.primary}`} />
-                  <h3 className={`text-sm font-black uppercase tracking-wider ${t.text}`}>Smart Partner Station</h3>
+                  <h3 className={`text-xs font-black uppercase tracking-wider ${t.text}`}>Quick-Control Terminal</h3>
                 </div>
-                <span className="text-[10px] font-semibold text-neutral-400">
-                  Adapts by category
+                <span className="text-[10px] font-bold text-neutral-400">
+                  Manage business parameters
                 </span>
               </div>
-
-              <p className={`text-[11px] ${t.textMuted} leading-relaxed`}>
-                Search and select any partner system instantly to trigger the <strong>Gemini AI Automatic Menu Generator</strong>, system theme changes, or live dispatch alerts.
-              </p>
 
               {/* Categoric Switchers */}
               <div className="flex flex-wrap gap-1.5">
@@ -726,8 +734,9 @@ export default function CeoDashboard() {
                 ].map(cat => (
                   <button
                     key={cat.id}
+                    type="button"
                     onClick={() => setHomeCategoryFilter(cat.id)}
-                    className={`px-3 py-1.5 rounded-xl text-[10.5px] font-bold border transition-all ${
+                    className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider border transition-all ${
                       homeCategoryFilter === cat.id
                         ? `${t.primaryBorder} ${t.primaryLight} ${t.primary}`
                         : `border-transparent bg-black/5 dark:bg-white/5 ${t.textMuted} hover:text-orange-500`
@@ -743,13 +752,14 @@ export default function CeoDashboard() {
                 <Search className={`absolute left-3.5 top-3.5 h-3.5 w-3.5 ${t.textMuted}`} />
                 <input 
                   type="text" 
-                  placeholder={`Search in ${homeCategoryFilter === 'All' ? 'all' : homeCategoryFilter}...`} 
+                  placeholder={`Search active business or email...`} 
                   value={homeSearchQuery}
                   onChange={(e) => setHomeSearchQuery(e.target.value)}
                   className={`w-full rounded-2xl border ${t.border} ${t.bg} pl-9 pr-9 py-2.5 outline-none ${t.text} text-xs font-semibold transition-all focus:ring-1 focus:ring-orange-500`}
                 />
                 {homeSearchQuery && (
                   <button 
+                    type="button"
                     onClick={() => setHomeSearchQuery('')}
                     className="absolute right-3 top-2.5 p-1 rounded-full hover:bg-black/5 dark:hover:bg-white/5"
                   >
@@ -758,9 +768,9 @@ export default function CeoDashboard() {
                 )}
               </div>
 
-              {/* Matching list of restaurants */}
-              <div className="space-y-2.5 max-h-[300px] overflow-y-auto pr-1">
-                {homeFilteredRests.slice(0, 10).map(r => {
+              {/* Matching list of restaurants with instant action toggles */}
+              <div className="space-y-3 max-h-[350px] overflow-y-auto pr-1">
+                {homeFilteredRests.map(r => {
                   const bType = r.businessType || 'Restaurant';
                   const isPaid = hasPaidThisMonth(r.id);
                   const hasActiveBulletin = !!r.adminMessage;
@@ -768,10 +778,10 @@ export default function CeoDashboard() {
                   return (
                     <div 
                       key={r.id} 
-                      className={`p-4 rounded-2xl border ${t.border} bg-neutral-50/50 dark:bg-neutral-900/30 hover:border-orange-500/30 transition-all space-y-3.5 text-left`}
+                      className={`p-4 rounded-3xl border ${t.border} bg-neutral-50/50 dark:bg-neutral-900/30 hover:border-orange-500/20 transition-all space-y-3`}
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <h4 className={`text-xs font-extrabold truncate ${t.text}`}>{r.name}</h4>
                             <span className={`text-[8.5px] font-black uppercase px-2 py-0.5 rounded ${
@@ -786,7 +796,7 @@ export default function CeoDashboard() {
                           <p className={`text-[10px] ${t.textMuted} truncate font-mono mt-0.5`}>{r.ownerEmail}</p>
                         </div>
 
-                        <div className="flex items-center gap-1 shrink-0">
+                        <div className="flex items-center gap-2 shrink-0">
                           <span className={`text-[8.5px] font-black uppercase px-2 py-0.5 rounded ${
                             isPaid 
                               ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' 
@@ -797,25 +807,27 @@ export default function CeoDashboard() {
                         </div>
                       </div>
 
-                      {/* Display warning alert bulletin message if any actively defined */}
+                      {/* Display bulletin notice if actively broadcasting to clients */}
                       {hasActiveBulletin && (
-                        <div className="p-2.5 rounded-xl bg-amber-500/5 border border-amber-500/20 text-[10px] flex items-start gap-1 text-amber-600 font-medium">
+                        <div className="p-2.5 rounded-xl bg-amber-500/5 border border-amber-500/20 text-[10px] flex items-start gap-1.5 text-amber-600 font-medium my-1">
                           <Megaphone className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
                           <div className="min-w-0 flex-1">
-                            <p className="truncate">Active Banner: "{r.adminMessage}"</p>
+                            <p className="truncate">Home Bulletin: "{r.adminMessage}"</p>
                           </div>
                           <button 
+                            type="button"
                             onClick={() => quickClearBulletinMessage(r)}
                             className="text-[8px] font-black uppercase text-amber-700 bg-amber-100 dark:bg-amber-950 px-1.5 py-0.5 rounded hover:bg-amber-200 transition-all shrink-0"
                           >
-                            Dismiss
+                            Clear
                           </button>
                         </div>
                       )}
 
-                      {/* Direct Navigation Links for rapid catalog customization */}
-                      <div className="flex items-center gap-2 pt-1">
+                      {/* Control Panel buttons for this client */}
+                      <div className="flex items-center justify-between gap-2.5 pt-1.5 border-t border-black/5 dark:border-white/5">
                         <button
+                          type="button"
                           onClick={() => {
                             setSelectedToolsClient(r.id);
                             setAdminMessageBody(r.adminMessage || '');
@@ -827,32 +839,42 @@ export default function CeoDashboard() {
                             setCustomStaffCodeEnabled(r.enableStaffCode || false);
                             setActiveTab('tools');
                           }}
-                          className={`flex-1 py-2 px-3 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-black text-[10.5px] uppercase tracking-wider flex items-center justify-center gap-1 transition-all active:scale-95`}
+                          className="flex items-center gap-1.5 text-xs font-black text-orange-500 hover:text-orange-600"
                         >
-                          <Sparkles className="w-3.5 h-3.5" /> AI Catalog Setup
+                          <Settings className="w-3.5 h-3.5" />
+                          <span>Configure Overrides</span>
                         </button>
 
-                        <button
-                          onClick={() => {
-                            setSelectedToolsClient(r.id);
-                            setAdminMessageBody(r.adminMessage || '');
-                            setCustomBusinessType(r.businessType || 'Restaurant');
-                            setCustomClientTheme(r.theme || 'classic-orange');
-                            setCustomStaffCodeEnabled(r.enableStaffCode || false);
-                            setActiveTab('tools');
-                          }}
-                          className={`py-2 px-3 rounded-xl border border-neutral-200/60 dark:border-neutral-800 ${t.text} hover:bg-black/5 dark:hover:bg-white/5 font-black text-[10.5px] uppercase tracking-wider flex items-center justify-center gap-1 transition-all active:scale-95`}
-                          title="Configure themes and layout modifiers"
-                        >
-                          <Settings className="w-3.5 h-3.5" /> Overrides
-                        </button>
+                        <div className="flex items-center gap-2">
+                          {!isPaid && (
+                            <button
+                              type="button"
+                              onClick={() => markPaid(r)}
+                              className="px-2.5 py-1 text-[9px] font-extrabold uppercase bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-xl hover:bg-emerald-500 hover:text-white transition-all"
+                            >
+                              Pay Due
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => toggleRestaurantBlock(r.id, !!r.isBlocked)}
+                            className={`px-2.5 py-1 rounded-xl text-[9px] font-extrabold uppercase border tracking-wider transition-all flex items-center gap-1 ${
+                              r.isBlocked 
+                                ? 'bg-red-500/10 text-red-500 border-red-500/20 hover:bg-red-500 hover:text-white' 
+                                : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20 hover:bg-red-500 hover:text-white hover:border-red-500/20'
+                            }`}
+                          >
+                            <Power className="w-2.5 h-2.5" />
+                            <span>{r.isBlocked ? 'Blocked' : 'Active'}</span>
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );
                 })}
 
                 {homeFilteredRests.length === 0 && (
-                  <div className="text-center py-6 border-2 border-dashed rounded-2xl border-neutral-200/50">
+                  <div className="text-center py-8 border-2 border-dashed rounded-2xl border-neutral-200/50">
                     <HelpCircle className="w-8 h-8 mx-auto text-neutral-400 mb-2" />
                     <p className="text-xs font-extrabold text-neutral-400 uppercase tracking-widest">No matching partners found</p>
                   </div>
@@ -860,18 +882,18 @@ export default function CeoDashboard() {
               </div>
             </div>
 
-            {/* Quick Informational Guide Footer */}
-            <div className={`p-5 rounded-3xl bg-neutral-100 dark:bg-[#161b22] border ${t.border} text-left space-y-2`}>
-              <h4 className={`text-xs font-black uppercase text-gray-400 tracking-wider flex items-center gap-1.5`}>
-                <Layers className="w-4 h-4 text-orange-500" /> Adapting to Multi-Business Dynamics
+            {/* Platform Quick Info Footer */}
+            <div className={`p-5 rounded-3xl bg-neutral-100 dark:bg-[#161b22] border ${t.border} space-y-2`}>
+              <h4 className="text-xs font-black uppercase text-gray-400 tracking-wider flex items-center gap-1.5">
+                <Layers className="w-4 h-4 text-orange-500" /> Multi-Industry Engine
               </h4>
-              <p className={`text-[10.5px] ${t.textMuted} leading-relaxed font-medium`}>
-                Our system automates front-ends according to partner business types:
+              <p className={`text-[10.5px] ${t.textMuted} leading-relaxed font-semibold`}>
+                The system automatically routes layouts based on selected tenant category:
               </p>
               <ul className="text-[10px] space-y-1.5 font-bold text-gray-500">
-                <li className="flex items-center gap-1">📍 <span className="text-neutral-700 dark:text-neutral-300">Beauty Salons & Clinics:</span> Enables Staff-Trackers & removes table reservations.</li>
-                <li className="flex items-center gap-1">📍 <span className="text-neutral-700 dark:text-neutral-300">Fast Food & Restaurants:</span> Activates table mapping checks and orders screen.</li>
-                <li className="flex items-center gap-1">📍 <span className="text-neutral-700 dark:text-neutral-300">General Retail Stores:</span> Transforms cart receipts to professional retail cash invoices.</li>
+                <li className="flex items-center gap-1">📍 <span className="text-neutral-700 dark:text-neutral-300">Beauty Salons & Clinics:</span> Activates Specialist Staff trackers and mutes dining table parameters.</li>
+                <li className="flex items-center gap-1">📍 <span className="text-neutral-700 dark:text-neutral-300">Cafes & Restaurants:</span> Activates table mapping checks and direct dining checkout.</li>
+                <li className="flex items-center gap-1">📍 <span className="text-neutral-700 dark:text-neutral-300">Retail & Product Shops:</span> Adapts dynamic order summary cards and receipt invoices.</li>
               </ul>
             </div>
           </div>
@@ -1645,46 +1667,7 @@ export default function CeoDashboard() {
         </div>
       </nav>
 
-      {/* Custom Confirmation Dialog Overlay */}
-      {confirmModal && confirmModal.isOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-          <div className={`${t.card} w-full max-w-sm rounded-[2.5rem] p-6 border ${t.border} shadow-2xl space-y-5 text-center`}>
-            <div className="mx-auto w-12 h-12 rounded-full flex items-center justify-center bg-orange-500/10 text-orange-500">
-              <AlertCircle className="w-6 h-6" />
-            </div>
-            
-            <div className="space-y-2">
-              <h3 className={`text-lg font-black ${t.text}`}>{confirmModal.title}</h3>
-              <p className={`text-xs font-medium leading-relaxed ${t.textMuted}`}>
-                {confirmModal.message}
-              </p>
-            </div>
 
-            <div className="flex gap-2.5">
-              <button
-                type="button"
-                onClick={() => setConfirmModal(null)}
-                className={`flex-1 py-3 text-xs font-bold uppercase tracking-widest rounded-2xl border ${t.border} ${t.bg} ${t.textMuted} hover:bg-black/5 dark:hover:bg-white/5 transition-all`}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={confirmModal.onConfirm}
-                className={`flex-1 py-3 text-xs font-black uppercase tracking-widest text-white rounded-2xl transition-all shadow-sm ${
-                  confirmModal.colorTheme === 'danger' 
-                    ? 'bg-red-500 hover:bg-red-600' 
-                    : confirmModal.colorTheme === 'success'
-                    ? 'bg-emerald-500 hover:bg-emerald-600'
-                    : 'bg-orange-500 hover:bg-orange-600'
-                }`}
-              >
-                {confirmModal.actionText}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Custom Toast Alert Banner */}
       {toast && (

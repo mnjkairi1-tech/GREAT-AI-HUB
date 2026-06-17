@@ -1981,7 +1981,7 @@ export default function CeoDashboard() {
                 </div>
 
                 {/* Styled client lists */}
-                <div className="space-y-2 max-h-[350px] overflow-y-auto pr-1">
+                <div className="space-y-2">
                   {filteredClients.length === 0 ? (
                     <div className="text-center py-6 border-2 border-dashed rounded-2xl border-neutral-200/50">
                       <HelpCircle className="w-8 h-8 mx-auto text-neutral-400 mb-2" />

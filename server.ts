@@ -81,6 +81,22 @@ function getImageUrlForProduct(name: string, businessType: string): string {
   }
 }
 
+// Helper function to call Gemini with retry
+async function fetchGeminiWithRetry(model: string, contents: string, config: any, retries = 3) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      return await ai.models.generateContent({ model, contents, config });
+    } catch (err: any) {
+      if (attempt === retries || err?.status !== 503) {
+        throw err;
+      }
+      console.warn(`[API] Gemini 503 error on attempt ${attempt}. Retrying in ${attempt * 1000}ms...`);
+      await new Promise(resolve => setTimeout(resolve, attempt * 1000));
+    }
+  }
+  throw new Error("Gemini API is unavailable after multiple retries");
+}
+
 // REST API for Gemini AI Quick Autofill
 app.post("/api/gemini/generate-menu-item", async (req, res) => {
   const { itemName, price, businessType } = req.body;
@@ -109,10 +125,10 @@ Provide:
 `;
 
     console.log(`[API] Gemini request received for: ${itemName} (${businessType})`);
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: prompt,
-      config: {
+    const response = await fetchGeminiWithRetry(
+      "gemini-3.5-flash",
+      prompt,
+      {
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -126,7 +142,7 @@ Provide:
           required: ["name", "price", "category", "description"]
         }
       }
-    });
+    );
 
     console.log(`[API] Gemini raw response:`, JSON.stringify(response, null, 2));
     const bodyText = response.text || "{}";
@@ -178,10 +194,10 @@ Return a JSON array where each object has these exact properties:
 `;
 
     console.log(`[API] Gemini bulk request received for businessType: ${businessType}`);
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: prompt,
-      config: {
+    const response = await fetchGeminiWithRetry(
+      "gemini-3.5-flash",
+      prompt,
+      {
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.ARRAY,
@@ -198,7 +214,7 @@ Return a JSON array where each object has these exact properties:
           }
         }
       }
-    });
+    );
 
     const bodyText = response.text || "[]";
     let dataList;
